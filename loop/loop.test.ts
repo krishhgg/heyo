@@ -243,6 +243,51 @@ describe('the loop', () => {
     expect(await readFile(join(workspace, 'history.md'), 'utf8')).toMatch(/Round 1: kept/);
   });
 
+  it('keeps the edit it checked, whatever a process the agent left behind writes later', async () => {
+    const before = `if (nearest.disabled) return refuse('disabled');`;
+    const added = `if (runnerUp && runnerUp.dist < nearest.dist + 8) return refuse('ambiguous');`;
+    // A child in a process group of its own outlives the round. It rewrites the
+    // decision a moment after the agent is done, while the runner is scoring.
+    const late = `setTimeout(() => {
+      const fs = require('node:fs');
+      fs.appendFileSync('decision/index.ts', '\\n// SMUGGLED\\n');
+    }, 300);`;
+    const smuggler = await agent(
+      'smuggler',
+      `${edit(
+        before,
+        `${added}
+  ${before}`,
+      )}
+       import { spawn } from 'node:child_process';
+       spawn(process.execPath, ['-e', ${JSON.stringify(late)}], { detached: true, stdio: 'ignore' }).unref();`,
+    );
+    const { result } = await loop('smuggler', smuggler);
+    expect(result.rounds[0]).toMatchObject({ round: 1, kept: true });
+    const kept = await readFile(join(result.best, 'index.ts'), 'utf8');
+    expect(kept).toContain('nearest.dist + 8');
+    expect(kept).not.toContain('SMUGGLED');
+  });
+
+  it('starts from the best of an earlier run in the same workspace', async () => {
+    const idle = await agent('idle-again', '');
+    const { workspace, result } = await loop('again', idle);
+    const best = await readFile(join(result.best, 'index.ts'), 'utf8');
+    await run(process.execPath, [
+      cli,
+      'run',
+      ...['--log', logFile, '--agent', idle, '--rounds', '1'],
+      ...['--workspace', workspace, '--decision', result.best],
+    ]).catch(() => undefined);
+    // The earlier best is where the second run started, and it is still whole.
+    expect(await readFile(join(result.best, 'index.ts'), 'utf8')).toBe(best);
+    expect(await readFile(join(workspace, 'decision/index.ts'), 'utf8')).toBe(best);
+    const again = JSON.parse(
+      await readFile(`${await realpath(workspace)}.private/result.json`, 'utf8'),
+    ) as LoopResult;
+    expect(again.rounds).toHaveLength(1);
+  });
+
   it('undoes a change that is not better', async () => {
     const looser = await agent('looser', edit('const MAX_DIST = 12;', 'const MAX_DIST = 30;'));
     const { workspace, result } = await loop('looser', looser);

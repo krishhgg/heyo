@@ -25,6 +25,33 @@ export const LIMITS = {
   maxStrings: 160,
 } as const;
 
+/**
+ * The globals a decision may use. Everything else the language or the host
+ * offers is refused, the names a blocklist would not think of included, such
+ * as Error, whose stack differs between the scorer and the browser. A decision
+ * has to give the same answer in both.
+ */
+const ALLOWED_GLOBALS = new Set([
+  'Math',
+  'RegExp',
+  'Number',
+  'String',
+  'Boolean',
+  'Array',
+  'Object',
+  'Set',
+  'Map',
+  'Infinity',
+  'NaN',
+  'isNaN',
+  'isFinite',
+  'parseInt',
+  'parseFloat',
+]);
+
+/** Members that answer by the machine's language settings. */
+const LOCALE_MEMBER = /^(toLocale\w*|localeCompare)$/;
+
 /** Modules a decision may import, besides its own files. */
 const ALLOWED_IMPORTS = new Set(['../core/geometry', '../core/types']);
 
@@ -176,6 +203,11 @@ function lintFile(
       report(node, 'Dynamic import.');
     }
     if (ts.isMetaProperty(node)) report(node, 'import.meta.');
+    // What a caught error says, and its stack, depend on where the code runs.
+    if (ts.isTryStatement(node)) report(node, 'try and catch. A decision has nothing to catch.');
+    if (ts.isPropertyAccessExpression(node) && LOCALE_MEMBER.test(node.name.text)) {
+      report(node, `"${node.name.text}" answers by the machine's language settings.`);
+    }
     // A module-level variable that can be assigned again is a place to keep a count of the calls.
     if (
       ts.isVariableStatement(node) &&
@@ -370,6 +402,25 @@ function typeCheck(files: string[], dir: string, coreDir: string, problems: Prob
     if (type.flags & ts.TypeFlags.NumberLike) return true;
     return type.isStringLiteral() && !HIDDEN_DOORS.has(type.value) && type.value !== 'random';
   };
+  // A name used as a value that neither the decision nor src/core declares
+  // comes from the language or the host. Only a short list of those is allowed.
+  const isOutsideValue = (node: ts.Identifier): boolean => {
+    if (ALLOWED_GLOBALS.has(node.text)) return false;
+    const parent = node.parent;
+    // The name after a dot, or a key of an object, is a member and not a global.
+    if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
+    if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
+    if (ts.isBindingElement(parent) && parent.propertyName === node) return false;
+    for (let up: ts.Node | undefined = parent; up; up = up.parent) {
+      if (ts.isTypeNode(up) || ts.isImportDeclaration(up)) return false;
+    }
+    const declared = checker.getSymbolAtLocation(node)?.declarations ?? [];
+    if (declared.length === 0) return false;
+    return declared.every((d) => {
+      const from = d.getSourceFile().fileName;
+      return !from.startsWith(dir) && !from.startsWith(coreDir);
+    });
+  };
   for (const file of files) {
     const tree = program.getSourceFile(file);
     if (!tree) continue;
@@ -379,6 +430,13 @@ function typeCheck(files: string[], dir: string, coreDir: string, problems: Prob
         : ts.isComputedPropertyName(node)
           ? node.expression
           : null;
+      if (ts.isIdentifier(node) && isOutsideValue(node)) {
+        problems.push({
+          file: relative(dir, file),
+          line: tree.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+          message: `Use of the global "${node.text}". A decision may use ${[...ALLOWED_GLOBALS].join(', ')} and nothing else from outside, so it answers the same in the scorer and in the browser.`,
+        });
+      }
       if (key && !isSafeKey(checker.getTypeAtLocation(key))) {
         problems.push({
           file: relative(dir, file),

@@ -4,8 +4,8 @@
 // is better. The held-out split is judged once, at the end, and never enters
 // the workspace.
 import { spawn } from 'node:child_process';
-import { chmod, cp, lstat, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { chmod, cp, lstat, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { retargetGates, wrongTargetGate } from '../src/core/gates';
 import type { Score } from '../src/core/metrics';
@@ -373,8 +373,17 @@ export async function runLoop(options: RunOptions, tools: LoopTools): Promise<Lo
   };
 
   const work = join(workspace, 'decision');
-  await copyDecision(options.decision, work);
-  await copyDecision(options.decision, best);
+  // The starting decision may be the best of an earlier run in this same
+  // workspace. Both copies below empty their target first, so it is set aside
+  // before either of them runs.
+  const start = await mkdtemp(join(tmpdir(), 'heyo-loop-start-'));
+  try {
+    await copyDecision(options.decision, start);
+    await copyDecision(start, work);
+    await copyDecision(start, best);
+  } finally {
+    await rm(start, { recursive: true, force: true });
+  }
   // A workspace can be one an earlier agent worked in, so nothing in it is
   // written through. Each entry of the runner's is removed and made again.
   await rm(join(workspace, 'core'), { recursive: true, force: true });
@@ -448,12 +457,19 @@ export async function runLoop(options: RunOptions, tools: LoopTools): Promise<Lo
     }
     let kept = false;
     let line: string;
+    // The agent's edit is copied into the runner's own folder, and that copy
+    // is what gets linted, scored and kept. A process the agent started that
+    // outlived the round can still write to the workspace. It cannot reach
+    // the copy, so what is kept is what was checked.
+    const candidate = join(privateDir, 'candidate');
     // An agent can leave the folder in any state, gone included. That is a
     // rejected round like any other, and the best decision is put back.
     let problems: Problem[] = [];
     let unreadable: string | null = null;
     try {
-      problems = lintDecision(work, coreDir);
+      if ((await lstat(work)).isSymbolicLink()) throw new Error('The decision folder is a link.');
+      await copyDecision(work, candidate);
+      problems = lintDecision(candidate, coreDir);
     } catch (error) {
       unreadable = error instanceof Error ? error.message : String(error);
     }
@@ -465,12 +481,12 @@ export async function runLoop(options: RunOptions, tools: LoopTools): Promise<Lo
       line = `rejected by the lint:\n${problemsText(problems)}`;
     } else {
       try {
-        const next = await standing(work);
+        const next = await standing(candidate);
         kept = isBetter(next, bestStanding);
         line = `${kept ? 'kept' : 'not better, undone'}: ${describe(next)}`;
         if (kept) {
           bestStanding = next;
-          await copyDecision(work, best);
+          await copyDecision(candidate, best);
         }
       } catch (error) {
         line = `could not be scored: ${error instanceof Error ? error.message : String(error)}`;

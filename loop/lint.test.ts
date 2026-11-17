@@ -196,6 +196,33 @@ describe('the decision lint', () => {
     }
   });
 
+  it('rejects anything that could answer differently in the browser than in the scorer', () => {
+    // The stack of an error names file:// under Node and another scheme in an extension.
+    const stack = body(`if (new Error().stack?.includes('file')) ${refuse}`);
+    expect(lint(stack).join(' ')).toMatch(/Use of the global "Error"/);
+    for (const [line, message] of [
+      [`if (typeof Symbol === 'function') ${refuse}`, /Use of the global "Symbol"/],
+      [`if (JSON.stringify(features).length > 9) ${refuse}`, /Use of the global "JSON"/],
+      [`try { features.candidates.at(0); } catch { ${refuse} }`, /try and catch/],
+      [`if ((12).toLocaleString() === '12') ${refuse}`, /language settings/],
+      [`if ('a'.localeCompare('b') < 0) ${refuse}`, /language settings/],
+    ] as const) {
+      expect(lint(body(line)).join(' '), line).toMatch(message);
+    }
+  });
+
+  it('allows the few globals a rule needs', () => {
+    const source = body(
+      `const words = new Set(['delete']);
+       const pattern = new RegExp('pay', 'i');
+       const near = features.candidates.filter((c) => Number.isFinite(c.dist) && c.dist < Infinity);
+       const label = String(near[0]?.label ?? '');
+       if (Array.isArray(near) && (words.has(label) || pattern.test(label))) ${refuse}
+       if (Object.keys(features.press).length > 9 || Math.max(1, near.length) > 9) ${refuse}`,
+    );
+    expect(lint(source)).toEqual([]);
+  });
+
   it('rejects a decision folder that is a link', () => {
     const linked = join(scratch, `case-${next++}`);
     mkdirSync(linked, { recursive: true });
