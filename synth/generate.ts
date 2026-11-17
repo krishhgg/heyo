@@ -591,6 +591,7 @@ export function generate(options: SynthOptions = DEFAULT_OPTIONS): LogExport {
       features,
       decision: { action: 'refuse', reason: 'no-candidate' },
       decisionVersion: 'synthetic',
+      extensionVersion: 'synthetic',
       followUp: draft.followUp,
     };
     const aimed = intent === 'aim' && target ? draft.near.controls.indexOf(target) : -1;
