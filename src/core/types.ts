@@ -130,6 +130,7 @@ export type RefuseReason =
   | 'long-press'
   | 'no-candidate'
   | 'too-far'
+  | 'covered'
   | 'ambiguous'
   | 'disabled'
   | 'unlabeled'

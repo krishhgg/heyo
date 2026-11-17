@@ -81,6 +81,14 @@ const IRREVERSIBLE = [
   'publish',
   'tweet',
   'retweet',
+  'share screen',
+  'call',
+  'join',
+  'unmute',
+  'present',
+  'record',
+  'hang up',
+  'terminate',
   'repost',
   'invite',
   'like',
@@ -126,6 +134,14 @@ function looksIrreversible(candidate: Candidate): boolean {
   );
 }
 
+/**
+ * True when the click point lies inside the box the way a browser hit-tests
+ * it, with the right and bottom edges outside. The box is relative to the click.
+ */
+function holdsClick({ rect }: Candidate): boolean {
+  return rect.x <= 0 && rect.x + rect.w > 0 && rect.y <= 0 && rect.y + rect.h > 0;
+}
+
 function inside(sample: PathSample, candidate: Candidate): boolean {
   return distanceToRect(sample, candidate.rect) === 0;
 }
@@ -167,6 +183,10 @@ export function decide(features: ClickFeatures): Decision {
   const byDist = [...features.candidates].sort((a, b) => a.dist - b.dist);
   const nearest = byDist[0];
   if (!nearest) return refuse('no-candidate');
+  // A click inside a control's box that did not reach the control landed on
+  // something that covers it, such as a sticky header over a list row or an
+  // open menu over a card. The user was looking at the cover.
+  if (byDist.some(holdsClick)) return refuse('covered');
   if (nearest.dist > MAX_DIST) return refuse('too-far');
   // An opaque region competes for the click but can never be the target.
   if (nearest.kind === 'opaque') return refuse('ambiguous');

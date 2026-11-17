@@ -29,6 +29,19 @@ describe('decide', () => {
     expect(decide(features({ candidates, churn: null }))).toEqual(retarget(0));
   });
 
+  it('refuses a control the click landed inside of, since something covers it there', () => {
+    // A list row that scrolled under a sticky header. Its box starts 20 px above
+    // the click, which landed on the header's blank background.
+    const row = candidate(0, 0, { rect: { x: -200, y: -20, w: 600, h: 48 }, label: 'Open item' });
+    expect(decide(features({ candidates: [row] }))).toEqual(refuse('covered'));
+    // A card under an open menu, with a menu item farther off.
+    const card = candidate(0, 0, { rect: { x: -40, y: -30, w: 300, h: 120 }, label: 'Open card' });
+    expect(decide(features({ candidates: [card, candidate(1, 10)] }))).toEqual(refuse('covered'));
+    // A click on the pixel just past the right or bottom edge is outside, as in a browser.
+    const past = candidate(0, 0, { rect: { x: -80, y: -15, w: 80, h: 30 } });
+    expect(decide(features({ candidates: [past] }))).toEqual(retarget(0));
+  });
+
   it('refuses when the runner-up is less than four times as far', () => {
     const close = [candidate(0, 4), candidate(1, 15.9)];
     expect(decide(features({ candidates: close }))).toEqual(refuse('ambiguous'));
@@ -100,6 +113,12 @@ describe('decide', () => {
       // A button that reads as a state undoes it when clicked.
       'Following',
       'Subscribed',
+      // Things that reach other people at once.
+      'Share screen',
+      'Join call',
+      'Unmute',
+      'Record',
+      'Hang up',
     ]) {
       const candidates = [candidate(0, 3, { label })];
       expect(decide(features({ candidates })), label).toEqual(refuse('irreversible'));
