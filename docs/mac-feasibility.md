@@ -4,7 +4,7 @@
 
 Not run yet. The experiment is built and waits for one permission that only a person at the Mac can give.
 
-It needs macOS Accessibility permission to create an active event tap, to query other apps and to post mouse events. On the build machine no process that an agent can start has that permission. A probe run from the agent's shell printed `AXIsProcessTrusted: false`, could not create an active tap, and got error -25211 (API disabled) from an Accessibility hit test. The computer-use tool is not allowed to drive Terminal, so there was no second route. Granting the permission is a change in System Settings, which was out of bounds for this build.
+It needs macOS Accessibility permission to create an active event tap, to query other apps and to post mouse events. The shell this was built from does not have it. A probe run there printed `AXIsProcessTrusted: false`, could not create an active tap, and got error -25211 (API disabled) from an Accessibility hit test. Granting the permission is a change in System Settings that the machine's owner has to make.
 
 Until it runs, the Mac app stays at this experiment. The plan's rule holds: do not commit to Mac retargeting before these questions have answers.
 

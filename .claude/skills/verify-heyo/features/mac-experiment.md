@@ -28,7 +28,7 @@ Preconditions:
 
 ## Gotchas
 
-- An agent's shell usually has no Accessibility permission. `check` printing `no` is the expected result there, and it is not a failure of the build.
+- A shell that was not started from an app with Accessibility permission has none. That covers CI runners and automation shells. `check` printing `no` is the expected result there, and it is not a failure of the build.
 - The tap part moves the real pointer and clicks for about ten seconds. Nobody else may be using the machine's pointer.
 - With only the Command Line Tools and no Xcode, Swift Testing needs extra search paths. `Package.swift` adds them when it sees that setup.
 - Permission is per host app. After granting it, quit and reopen the terminal.
