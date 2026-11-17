@@ -201,12 +201,14 @@ describe('a decision under the scorer', () => {
     expect(stderr).toContain('A decision may import only its own .ts files');
   });
 
-  it('may import its own files', async () => {
+  it('may import its own files, from a subfolder too', async () => {
     const folder = await decisionDir(
       'split',
-      `import { reason } from './words';
+      `import { reason } from './rules/far';
        export const decide = () => ({ action: 'refuse', reason });`,
     );
+    await mkdir(join(folder, 'rules'));
+    await writeFile(join(folder, 'rules/far.ts'), `export { reason } from '../words';`);
     await writeFile(join(folder, 'words.ts'), `export const reason = 'too-far';`);
     const { code, stdout } = await scorer('score', logFile, '--decision', folder, '--json');
     expect(code).toBe(0);

@@ -62,7 +62,7 @@ export function decisionPlugin(decisionDir) {
         if (/^\.\.\/core\/[\w-]+(\.ts)?$/.test(args.path)) {
           return { path: join(root, 'src/core', `${basename(args.path).replace(/\.ts$/, '')}.ts`) };
         }
-        if (args.path.startsWith('./')) {
+        if (args.path.startsWith('./') || args.path.startsWith('../')) {
           const named = resolve(dirname(args.importer), args.path);
           const file = named.endsWith('.ts') ? named : `${named}.ts`;
           // The real path, so a link inside the folder cannot point out of it.
