@@ -129,3 +129,14 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - The page uses one bundled typeface, Recursive (OFL). The extension makes no network calls, so the font ships inside it.
 - Preact renders the page. It is 4 KB and keeps the review state readable.
 - Deleting the log takes two clicks, and the second button names how much it deletes. `Keep the log` appears where the first click landed and the delete button takes no click for 600 ms, so a double-click cannot delete anything.
+
+## Scorer and synthetic log
+
+- The scorer runs the decision in a child process under Node's permission system, with read access to its own bundle only. It is sent click features and nothing else. That enforces by construction what the plan asks the lint to enforce by inspection.
+- The scorer always uses the repo's own `src/core`, also for a decision in another folder with its own copy beside it.
+- A decision that returns an unknown candidate, an opaque region or a malformed answer fails the run. A silent fallback to "refuse" would hide a broken rule.
+- The held-out split is a fixed quarter of the sites, by a hash of the site name, plus the last 30% of the weeks. Holding out the latest weeks matches how the decision will be used, on clicks made after it was tuned.
+- `gates` exits 0 only when both retargeting gates pass. The shadow-mode stop condition is reported but does not change the exit code, because it is judged once on the real log and not on every run.
+- The synthetic generator's behavioral numbers are guesses and live in one `ASSUMPTIONS` object. The share of deliberate clicks that land beside a control is 0.5%. The synthetic wrong-target rate follows almost directly from it.
+- Synthetic review marks cover every candidate of every record, so any decision can be scored without new reviews.
+- In the synthetic layouts many rows of controls touch with no gap, and a lone control is the most common scene. Real toolbars and lists mostly have touching hit boxes, so a miss between two neighbors is rarer than a miss off the end of a row.

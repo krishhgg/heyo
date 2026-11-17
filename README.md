@@ -18,6 +18,16 @@ npm run verify -- doctor   # health check for the verification skill
 
 `npm run e2e` and `npm run verify` need a fresh `npm run build`.
 
+## Score a log
+
+```bash
+npm run synth -- --out synth.json   # or export a real log from the review page
+npm run score -- synth.json
+npm run gates -- synth.json
+```
+
+[docs/scoring.md](docs/scoring.md) explains the report, the held-out split and what a decision can see.
+
 ## Mac app
 
 `mac/` holds the feasibility experiment for a macOS version. It has not been run yet, because it needs Accessibility permission. [docs/mac-feasibility.md](docs/mac-feasibility.md) says how to run it and how to read the result.
