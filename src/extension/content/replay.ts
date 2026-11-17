@@ -6,7 +6,7 @@ import { nearestPointInRect } from '../../core/geometry';
 import type { Candidate, Fire } from '../../core/types';
 import { boxOf } from './candidates';
 import { isDisabled, tagOf } from './clickable';
-import { allShadowRoots, elementAt, parentOf } from './dom';
+import { allShadowRoots, elementAt, isWithin, parentOf } from './dom';
 import { reacted, ReactionWatch } from './reaction';
 
 /**
@@ -25,14 +25,6 @@ const INSET_PX = 3;
 
 function failed(failure: NonNullable<Fire['failure']>): Fire {
   return { outcome: 'failed', failure };
-}
-
-/** True when `inner` is `outer` or sits inside it in the tree the user sees. */
-function isWithin(inner: Element, outer: Element): boolean {
-  for (let node: Element | null = inner; node; node = parentOf(node)) {
-    if (node === outer) return true;
-  }
-  return false;
 }
 
 /** A point just inside a box, as near the original click as it can be. */
