@@ -17,3 +17,13 @@ npm run verify -- doctor   # health check for the verification skill
 ```
 
 `npm run e2e` and `npm run verify` need a fresh `npm run build`.
+
+## Mac app
+
+`mac/` holds the feasibility experiment for a macOS version. It has not been run yet, because it needs Accessibility permission. [docs/mac-feasibility.md](docs/mac-feasibility.md) says how to run it and how to read the result.
+
+```bash
+cd mac
+swift test                                  # the parts that need no permission
+swift run -c release heyo-feasibility check # says whether the permission is there
+```
