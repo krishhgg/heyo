@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: typed text</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      .at {
+        position: absolute;
+      }
+      button {
+        height: 32px;
+        box-sizing: border-box;
+        white-space: nowrap;
+      }
+      input,
+      textarea,
+      .rich {
+        width: 200px;
+        height: 32px;
+        box-sizing: border-box;
+      }
+      .editor {
+        width: 300px;
+        height: 80px;
+        cursor: text;
+        background: #f4f4f4;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Seventy hidden inputs ahead of every real field, the way large forms and tables have them. -->
+    <div id="hidden-inputs"></div>
+
+    <!-- Row 1: a search box whose text the page repeats in two button labels. -->
+    <input
+      id="query"
+      class="at"
+      style="left: 100px; top: 100px"
+      type="search"
+      placeholder="Search"
+    />
+    <button id="echo" class="at" style="left: 400px; top: 100px">Search for nothing</button>
+    <button id="echo-aria" class="at" style="left: 700px; top: 100px; width: 32px"></button>
+
+    <!-- Row 2: a text area and a rich text box. -->
+    <textarea id="notes" class="at" style="left: 100px; top: 200px"></textarea>
+    <div id="rich" class="rich at" style="left: 400px; top: 200px" contenteditable="true"></div>
+
+    <!-- Row 3: a code editor that keeps the typing in a hidden text area and draws it as ordinary elements. -->
+    <div class="at" style="left: 100px; top: 300px">
+      <textarea
+        id="editor-input"
+        style="position: absolute; opacity: 0; width: 1px; height: 1px"
+      ></textarea>
+    </div>
+    <div id="editor" class="editor at" style="left: 100px; top: 300px">
+      <div class="line"></div>
+    </div>
+
+    <!-- Row 4: a field built from a plain element, a search box inside a shadow root, and a button that repeats it. -->
+    <div id="fake-field" class="rich at" style="left: 100px; top: 420px" role="textbox"></div>
+    <x-search id="shadow-search" class="at" style="left: 400px; top: 420px"></x-search>
+    <button id="shadow-echo" class="at" style="left: 700px; top: 420px">Find nothing</button>
+
+    <!-- Row 5: a radio button whose value matches its label, and a rich text box whose text a button repeats. -->
+    <label id="plan" class="at" style="left: 100px; top: 520px"
+      ><input type="radio" name="plan" value="monthly" /> Monthly</label
+    >
+    <div id="title" class="rich at" style="left: 400px; top: 520px" contenteditable="true"></div>
+    <button id="title-echo" class="at" style="left: 700px; top: 520px">Rename to nothing</button>
+
+    <!-- Row 6: a name field, and a button that greets by first name. -->
+    <input id="name" class="at" style="left: 100px; top: 620px" type="text" />
+    <button id="greet" class="at" style="left: 400px; top: 620px">Continue as guest</button>
+
+    <script>
+      const nameField = document.getElementById('name');
+      nameField.addEventListener('input', () => {
+        document.getElementById('greet').textContent =
+          `Continue as ${nameField.value.split(' ')[0]}`;
+      });
+      document.getElementById('hidden-inputs').innerHTML =
+        '<input type="hidden" value="token" />'.repeat(70);
+      const title = document.getElementById('title');
+      title.addEventListener('input', () => {
+        document.getElementById('title-echo').textContent = `Rename to ${title.textContent}`;
+      });
+      document.getElementById('fake-field').textContent = 'typed in a custom field';
+      customElements.define(
+        'x-search',
+        class extends HTMLElement {
+          constructor() {
+            super();
+            const root = this.attachShadow({ mode: 'open' });
+            root.innerHTML =
+              '<input style="width: 200px; height: 32px; box-sizing: border-box; display: block" />';
+            root.querySelector('input').addEventListener('input', (event) => {
+              document.getElementById('shadow-echo').textContent = `Find ${event.target.value}`;
+            });
+          }
+        },
+      );
+
+      const query = document.getElementById('query');
+      query.addEventListener('input', () => {
+        document.getElementById('echo').textContent = `Search for ${query.value || 'nothing'}`;
+        document
+          .getElementById('echo-aria')
+          .setAttribute('aria-label', `Clear search for ${query.value}`);
+      });
+
+      const input = document.getElementById('editor-input');
+      const editor = document.getElementById('editor');
+      editor.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        input.focus();
+      });
+      input.addEventListener('input', () => {
+        editor.querySelector('.line').textContent = input.value;
+      });
+    </script>
+  </body>
+</html>

@@ -1,4 +1,9 @@
 import type { ContentRequest, PingReply } from '../messages';
+import { startCapture } from './capture';
+import { connectListeners } from './listeners';
+
+connectListeners();
+startCapture();
 
 chrome.runtime.onMessage.addListener((request: ContentRequest, _sender, sendResponse) => {
   if (request.type === 'ping') {

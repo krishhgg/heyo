@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: a centered body on a root that scrolls</title>
+    <style>
+      /* A common reset. It makes the root element a box that scrolls. */
+      html {
+        overflow-x: hidden;
+      }
+      body {
+        width: 600px;
+        margin: 0 auto;
+      }
+      #tall {
+        height: 4000px;
+      }
+      #save {
+        position: absolute;
+        top: 2300px;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="tall"></div>
+    <button id="save">Save</button>
+  </body>
+</html>

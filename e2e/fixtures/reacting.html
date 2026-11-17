@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: reacting</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      .at {
+        position: absolute;
+      }
+      button {
+        width: 80px;
+        height: 32px;
+        box-sizing: border-box;
+      }
+      .zone {
+        width: 200px;
+        height: 60px;
+        background: #eee;
+      }
+      input {
+        height: 32px;
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- A click anywhere in this zone changes the DOM. The zone wraps a button, so its listener is delegation. -->
+    <div id="mutates" class="at zone" style="left: 100px; top: 100px">
+      <button id="in-mutates" class="at" style="left: 110px; top: 14px">Menu</button>
+    </div>
+
+    <!-- A click in this zone pushes a history entry. -->
+    <div id="navigates" class="at zone" style="left: 100px; top: 200px">
+      <button id="in-navigates" class="at" style="left: 110px; top: 14px">Tab</button>
+    </div>
+
+    <!-- A click in this zone scrolls the box below it. -->
+    <div id="scrolls" class="at zone" style="left: 100px; top: 300px">
+      <button id="in-scrolls" class="at" style="left: 110px; top: 14px">Down</button>
+    </div>
+    <div
+      id="scroller"
+      class="at"
+      style="left: 400px; top: 300px; width: 100px; height: 60px; overflow: auto"
+    >
+      <div style="height: 400px"></div>
+    </div>
+
+    <!-- Focus and selection. -->
+    <input id="field" class="at" style="left: 100px; top: 400px; width: 160px" type="text" />
+    <button id="near-field" class="at" style="left: 300px; top: 460px">Apply</button>
+    <p id="words" class="at" style="left: 100px; top: 520px; margin: 0">Select these words.</p>
+    <button id="near-words" class="at" style="left: 300px; top: 580px">Copy</button>
+
+    <script>
+      document.getElementById('mutates').addEventListener('click', (event) => {
+        if (event.target.id === 'mutates') event.currentTarget.dataset.clicked = 'yes';
+      });
+      document.getElementById('navigates').addEventListener('click', (event) => {
+        if (event.target.id === 'navigates') history.pushState({}, '', '?tab=2');
+      });
+      document.getElementById('scrolls').addEventListener('click', (event) => {
+        if (event.target.id === 'scrolls') document.getElementById('scroller').scrollTop = 100;
+      });
+    </script>
+  </body>
+</html>

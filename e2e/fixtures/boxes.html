@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: inline boxes and scrollbars</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      .card {
+        width: 300px;
+        height: 80px;
+        margin: 24px 0 0 40px;
+        background: #eee;
+      }
+      .card button {
+        margin: 6px 0 0 20px;
+      }
+      #chip-row {
+        position: absolute;
+        left: 40px;
+        top: 300px;
+      }
+      #chip {
+        padding: 8px 14px;
+        background: #dde;
+      }
+      /* A scrollbar that takes up room, as a mouse user's scrollbars do. */
+      #scroller {
+        position: absolute;
+        left: 40px;
+        top: 400px;
+        width: 200px;
+        height: 120px;
+        overflow-y: scroll;
+      }
+      #scroller::-webkit-scrollbar {
+        width: 16px;
+      }
+      #scroller::-webkit-scrollbar-thumb {
+        background: #888;
+      }
+      #scroller p {
+        height: 600px;
+        margin: 0;
+      }
+      #beside-scroller {
+        position: absolute;
+        left: 246px;
+        top: 440px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- A custom element is an inline box unless its styles say otherwise, and frameworks put block content in it. -->
+    <app-panel id="panel">
+      <div class="card" id="first"></div>
+      <div class="card" id="second"><button id="in-card">Open</button></div>
+    </app-panel>
+
+    <div id="chip-row"><span id="chip">Draft</span> <button id="publish">Publish</button></div>
+
+    <div id="scroller"><p></p></div>
+    <button id="beside-scroller">Next</button>
+  </body>
+</html>

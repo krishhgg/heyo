@@ -57,6 +57,11 @@ describe('decide', () => {
     );
   });
 
+  it('refuses a control with no name, such as an icon button without a label', () => {
+    const candidates = [candidate(0, 3, { label: '' })];
+    expect(decide(features({ candidates }))).toEqual(refuse('unlabeled'));
+  });
+
   it('refuses a disabled control', () => {
     const candidates = [candidate(0, 3, { disabled: true })];
     expect(decide(features({ candidates }))).toEqual(refuse('disabled'));
@@ -67,6 +72,8 @@ describe('decide', () => {
       const candidates = [candidate(0, 3, { label })];
       expect(decide(features({ candidates })), label).toEqual(refuse('irreversible'));
     }
+    const blanked = [candidate(0, 3, { label: 'Search for …', redacted: true })];
+    expect(decide(features({ candidates: blanked }))).toEqual(refuse('irreversible'));
     for (const label of ['Bookmarks', 'Likes and replies', 'Paying users', 'Open']) {
       const candidates = [candidate(0, 3, { label })];
       expect(decide(features({ candidates })), label).toEqual(retarget(0));

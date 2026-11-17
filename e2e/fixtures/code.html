@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: highlighted code</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+      }
+      pre {
+        margin: 40px 0 0 40px;
+        width: 700px;
+        font:
+          13px/20px ui-monospace,
+          monospace;
+      }
+      .k {
+        color: #a0f;
+      }
+      .s {
+        color: #070;
+      }
+      #copy {
+        position: absolute;
+        left: 760px;
+        top: 40px;
+      }
+    </style>
+  </head>
+  <body>
+    <button id="copy">Copy</button>
+    <script>
+      // A highlighted code block, nested as deep as a real page nests one.
+      // `style=tokens` puts the token spans straight into the pre, with plain
+      // text between them. `style=code` wraps every line's tokens in one code
+      // element, so the pre holds no text of its own.
+      const params = new URLSearchParams(location.search);
+      const lines = Number(params.get('lines') ?? 30);
+      let parent = document.body;
+      for (let depth = 0; depth < 12; depth++) {
+        parent = parent.appendChild(document.createElement('div'));
+      }
+      const pre = parent.appendChild(document.createElement('pre'));
+      pre.id = 'block';
+      const holder =
+        params.get('style') === 'code' ? pre.appendChild(document.createElement('code')) : pre;
+      const span = (className, text) => {
+        const element = document.createElement('span');
+        element.className = className;
+        element.textContent = text;
+        return element;
+      };
+      for (let line = 0; line < lines; line++) {
+        holder.append(
+          span('k', 'const'),
+          ` value${line} = `,
+          span('s', `'line ${line}'`),
+          ';',
+          span('k', ' // '),
+          span('s', 'note'),
+          '\n',
+        );
+      }
+      // Reports how long after each press the page's own handler got to run,
+      // which is the time heyo's handler took plus the delivery of the event.
+      window.delays = [];
+      window.addEventListener(
+        'pointerdown',
+        (event) => window.delays.push(performance.now() - event.timeStamp),
+        true,
+      );
+    </script>
+  </body>
+</html>

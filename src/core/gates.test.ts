@@ -72,6 +72,7 @@ describe('missRateGate', () => {
     activeDays: 14,
     clicks: 10000,
     misses: 70,
+    masked: 0,
     rate: 0.007,
     perDay: 5,
   };
