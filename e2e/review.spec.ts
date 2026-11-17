@@ -16,6 +16,18 @@ async function openReviewWithFires(page: Page, worker: Worker, extensionId: stri
   await expect(page.locator('.plate')).toBeVisible();
 }
 
+/** Waits until the page will take the next mark: the stamp is gone and the next click has had its moment. */
+async function ready(page: Page) {
+  await expect(page.locator('.stamp')).toHaveCount(0);
+  await expect(page.locator('.verdicts[aria-busy="false"], .empty').first()).toBeAttached();
+}
+
+/** One mark from the keyboard, waited out. */
+async function press(page: Page, key: string) {
+  await page.keyboard.press(key);
+  await ready(page);
+}
+
 test.describe('the review page', () => {
   test('shows each would-be fire and never a refused click', async ({
     page,
@@ -30,10 +42,8 @@ test.describe('the review page', () => {
     const seen: string[] = [];
     for (let i = 0; i < 3; i++) {
       seen.push(await page.locator('.target').innerText());
-      await page.keyboard.press('y');
+      await press(page, 'y');
       await expect(page.locator('.progress-text')).toContainText(`${i + 1} marked`);
-      // Keys are ignored while the stamp shows, so a double tap cannot mark an unseen click.
-      await expect(page.locator('.stamp')).toHaveCount(0);
     }
     expect(seen.sort()).toEqual(['Card', 'Inner', 'Save']);
     await expect(page.getByRole('heading', { name: 'All caught up' })).toBeVisible();
@@ -53,8 +63,7 @@ test.describe('the review page', () => {
       ['u', 'unsure'],
     ] as const) {
       marked[await page.locator('.target').innerText()] = verdict;
-      await page.keyboard.press(key);
-      await expect(page.locator('.stamp')).toHaveCount(0);
+      await press(page, key);
     }
     // The review screen says only how far along the pile is, never what the marks add up to.
     await expect(page.locator('.progress-text')).toHaveText('3 marked · 0 waiting');
@@ -82,6 +91,7 @@ test.describe('the review page', () => {
     const first = await page.locator('.target').innerText();
     await page.getByRole('button', { name: /No, wrong/ }).click();
     await expect(page.locator('.target')).not.toHaveText(first);
+    await ready(page);
 
     await page.keyboard.press('z');
     await expect(page.locator('.target')).toHaveText(first);
@@ -89,8 +99,7 @@ test.describe('the review page', () => {
 
     await expect(page.locator('.earlier')).toHaveText(/You marked this wrong/);
 
-    await page.keyboard.press('y');
-    await expect(page.locator('.stamp')).toHaveCount(0);
+    await press(page, 'y');
     await expect(page.locator('.progress-text')).toContainText('1 marked');
     expect((await readLog(worker)).reviews.map((r) => r.verdict)).toEqual(['right']);
   });
@@ -102,8 +111,7 @@ test.describe('the review page', () => {
   }) => {
     await openReviewWithFires(page, worker, extensionId);
     const first = await page.locator('.target').innerText();
-    await page.keyboard.press('n');
-    await expect(page.locator('.stamp')).toHaveCount(0);
+    await press(page, 'n');
     const second = await page.locator('.target').innerText();
 
     await page.getByRole('button', { name: 'Numbers' }).click();
@@ -119,11 +127,9 @@ test.describe('the review page', () => {
 
   test('counts a changed mark once, as the store does', async ({ page, worker, extensionId }) => {
     await openReviewWithFires(page, worker, extensionId);
-    await page.keyboard.press('n');
-    await expect(page.locator('.stamp')).toHaveCount(0);
+    await press(page, 'n');
     await page.keyboard.press('z');
-    await page.keyboard.press('y');
-    await expect(page.locator('.stamp')).toHaveCount(0);
+    await press(page, 'y');
 
     await page.getByRole('button', { name: 'Numbers' }).click();
     await expect(page.locator('.log-size')).toContainText('1 review mark');
@@ -138,22 +144,80 @@ test.describe('the review page', () => {
     expect((await readLog(worker)).reviews).toHaveLength(1);
   });
 
-  test('ignores a double tap, also with reduced motion', async ({ page, worker, extensionId }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' });
+  for (const motion of ['no-preference', 'reduce'] as const) {
+    for (const gap of [20, 280, 480]) {
+      test(`ignores a second tap ${gap} ms after the first, with motion ${motion === 'reduce' ? 'reduced' : 'on'}`, async ({
+        page,
+        worker,
+        extensionId,
+      }) => {
+        await page.emulateMedia({ reducedMotion: motion });
+        await openReviewWithFires(page, worker, extensionId);
+        await page.keyboard.press('y');
+        // The second tap lands while the stamp shows, or just after the next click came up.
+        await page.waitForTimeout(gap);
+        await page.keyboard.press('y');
+        await ready(page);
+        await expect(page.locator('.progress-text')).toContainText('1 marked');
+        expect((await readLog(worker)).reviews).toHaveLength(1);
+      });
+    }
+  }
+
+  test('shows a fresh mark as fresh while it is being stamped', async ({
+    page,
+    worker,
+    extensionId,
+  }) => {
     await openReviewWithFires(page, worker, extensionId);
+    const before = await page.getByRole('button', { name: /Yes, right/ }).boundingBox();
     await page.keyboard.press('y');
-    await page.keyboard.press('y', { delay: 20 });
-    await expect(page.locator('.stamp')).toHaveCount(0);
-    await expect(page.locator('.progress-text')).toContainText('1 marked');
+    await expect(page.locator('.stamp')).toBeVisible();
+    // No "you marked this" line, no filled button, and nothing moved.
+    await expect(page.locator('.earlier')).toHaveCount(0);
+    await expect(page.locator('.verdict.chosen')).toHaveCount(0);
+    expect(await page.getByRole('button', { name: /Yes, right/ }).boundingBox()).toEqual(before);
+    await ready(page);
+  });
+
+  test('marks one click when Enter is held on a focused answer', async ({
+    page,
+    worker,
+    extensionId,
+  }) => {
+    await openReviewWithFires(page, worker, extensionId);
+    await page.getByRole('button', { name: /Yes, right/ }).focus();
+    await page.keyboard.down('Enter');
+    // Held long enough for the key to repeat through the stamp and the look time.
+    for (let i = 0; i < 30; i++) {
+      await page.keyboard.down('Enter');
+      await page.waitForTimeout(30);
+    }
+    await page.keyboard.up('Enter');
+    await ready(page);
     expect((await readLog(worker)).reviews).toHaveLength(1);
   });
 
-  test('ignores a double tap with motion on, too', async ({ page, worker, extensionId }) => {
+  test('drops marks of a deleted log from the way back', async ({ page, worker, extensionId }) => {
     await openReviewWithFires(page, worker, extensionId);
-    await page.keyboard.press('y');
-    await page.keyboard.press('y', { delay: 20 });
-    await expect(page.locator('.stamp')).toHaveCount(0);
-    await expect(page.locator('.progress-text')).toContainText('1 marked');
+    await press(page, 'y');
+    await page.getByRole('button', { name: 'Numbers' }).click();
+    await page.getByRole('button', { name: 'Delete the log' }).click();
+    await page.getByRole('button', { name: /Delete 4 clicks/ }).click();
+    await expect(page.locator('.log-size')).toContainText('0 logged clicks');
+
+    // A new click is logged in another tab while the page stays open.
+    const other = await page.context().newPage();
+    await other.goto('/capture.html');
+    await clickAt(other, 184, 116);
+    await other.close();
+    await page.reload();
+    await page.getByRole('button', { name: /Review/ }).click();
+    await expect(page.locator('.target')).toHaveText('Save');
+    await expect(page.getByRole('button', { name: /Back to the last one/ })).toBeDisabled();
+    await page.keyboard.press('z');
+    await expect(page.locator('.target')).toHaveText('Save');
+    await press(page, 'y');
     expect((await readLog(worker)).reviews).toHaveLength(1);
   });
 
@@ -172,7 +236,7 @@ test.describe('the review page', () => {
     });
     await page.keyboard.press('y');
     await expect(page.getByRole('alert')).toHaveText(/not saved/);
-    await expect(page.locator('.stamp')).toHaveCount(0);
+    await ready(page);
     await expect(page.locator('.target')).toHaveText(first);
     expect((await readLog(worker)).reviews).toHaveLength(0);
 
@@ -182,19 +246,72 @@ test.describe('the review page', () => {
     expect((await readLog(worker)).reviews).toHaveLength(1);
   });
 
-  test('keeps the drawing and the buttons on screen in a small window', async ({
+  for (const [width, height] of [
+    [1280, 633],
+    [900, 700],
+    [800, 600],
+    [560, 700],
+  ] as const) {
+    test(`keeps the drawing and the answers on screen at ${width} by ${height}`, async ({
+      page,
+      worker,
+      extensionId,
+      baseURL,
+    }) => {
+      // A crowded click: a name of two lines and three neighbours, on a long site name.
+      const { port } = new URL(baseURL!);
+      await page.goto(`http://mail.planning-notes.heyo.test:${port}/crowd.html`);
+      await clickAt(page, 404, 216);
+      expect((await readLog(worker)).records[0]!.decision.action).toBe('retarget');
+
+      await page.setViewportSize({ width, height });
+      await page.goto(`chrome-extension://${extensionId}/review.html`);
+      await expect(page.locator('.target')).toHaveText(/^Save the quarterly/);
+      await expect(page.locator('.plate')).toBeInViewport({ ratio: 1 });
+      for (const name of [/Yes, right/, /No, wrong/, /Not sure/]) {
+        await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
+      }
+      // Nothing is wider than the window.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    });
+  }
+
+  test('brings the next drawing into view after a mark made lower down', async ({
     page,
     worker,
     extensionId,
   }) => {
-    await page.setViewportSize({ width: 800, height: 800 });
     await openReviewWithFires(page, worker, extensionId);
-    await expect(page.locator('.plate')).toBeInViewport({ ratio: 1 });
-    await expect(page.getByRole('button', { name: /No, wrong/ })).toBeInViewport({ ratio: 1 });
-
+    // Too small for the drawing and the answers at once, so the click on an answer scrolls down.
+    await page.setViewportSize({ width: 500, height: 500 });
     await page.getByRole('button', { name: /Yes, right/ }).click();
-    await expect(page.locator('.stamp')).toHaveCount(0);
+    await ready(page);
     await expect(page.locator('.plate')).toBeInViewport({ ratio: 1 });
+  });
+
+  test('says so when the log cannot be read, and reads it on a second try', async ({
+    page,
+    worker,
+    extensionId,
+  }) => {
+    await page.goto('/capture.html');
+    await clickAt(page, 184, 116);
+    expect((await readLog(worker)).records).toHaveLength(1);
+    // The store fails to open once, as it does when the profile is busy or damaged.
+    await page.addInitScript(() => {
+      const open = indexedDB.open.bind(indexedDB);
+      let failed = false;
+      indexedDB.open = (...args) => {
+        if (failed) return open(...args);
+        failed = true;
+        throw new DOMException('The store is not available.', 'UnknownError');
+      };
+    });
+    await page.goto(`chrome-extension://${extensionId}/review.html`);
+    await expect(page.getByRole('alert')).toContainText('The log could not be read');
+
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await expect(page.locator('.target')).toHaveText('Save');
   });
 
   test('says so when there is nothing to review', async ({ page, extensionId }) => {
@@ -279,6 +396,29 @@ test.describe('the numbers page', () => {
     expect(log.reviews).toEqual([]);
     expect(log.counts).toEqual([]);
   });
+});
+
+test('says so when the log cannot be exported or deleted', async ({
+  page,
+  worker,
+  extensionId,
+}) => {
+  await openReviewWithFires(page, worker, extensionId);
+  await page.getByRole('button', { name: 'Numbers' }).click();
+  // Every transaction on the store fails from here on.
+  await page.evaluate(() => {
+    IDBDatabase.prototype.transaction = () => {
+      throw new DOMException('The store is not available.', 'UnknownError');
+    };
+  });
+
+  await page.getByRole('button', { name: 'Export the log' }).click();
+  await expect(page.getByRole('alert')).toHaveText(/could not be exported/);
+
+  await page.getByRole('button', { name: 'Delete the log' }).click();
+  await page.getByRole('button', { name: /Delete 4 clicks/ }).click();
+  await expect(page.getByRole('alert')).toHaveText(/could not be deleted/);
+  expect((await readLog(worker)).records).toHaveLength(4);
 });
 
 test('a double-click on Delete the log keeps the log', async ({ page, worker, extensionId }) => {

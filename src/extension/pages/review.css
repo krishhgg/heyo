@@ -195,6 +195,11 @@ code {
   background: var(--pen-wash);
 }
 
+.legend .legend-opaque::before {
+  border-style: dashed;
+  background: repeating-linear-gradient(45deg, transparent 0 2px, var(--grid-major) 2px 3px);
+}
+
 .legend .legend-path::before {
   height: 0;
   border-width: 1.5px 0 0;
@@ -204,6 +209,8 @@ code {
 
 .plate-frame {
   position: relative;
+  /* The drawing never grows taller than the window leaves room for. */
+  width: min(100%, max(240px, calc(100vh - 170px)));
   border: 1.5px solid var(--ink);
   border-radius: 6px;
   overflow: hidden;
@@ -360,6 +367,11 @@ code {
   padding-top: 4px;
 }
 
+/* Room for a name of two lines, so the answer buttons sit in the same place for every click. */
+.pick {
+  min-height: 150px;
+}
+
 .eyebrow {
   color: var(--graphite);
 }
@@ -396,6 +408,16 @@ code {
 
 .facts dt {
   color: var(--graphite);
+}
+
+/* A long site name wraps inside its column and never widens the page. */
+.facts dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.viewport-map {
+  flex: none;
 }
 
 .where {
@@ -495,7 +517,7 @@ kbd {
 
 .unsaved {
   margin-top: 12px;
-  color: var(--pencil);
+  color: var(--pencil-deep);
   font-weight: 700;
 }
 
@@ -792,26 +814,20 @@ td.num {
 
   /* The drawing stays small enough that the buttons under it are on screen too. */
   .plate-frame {
-    width: min(100%, 42vh);
+    width: min(100%, max(200px, calc(100vh - 500px)));
     margin-inline: auto;
   }
 
-  /* The question and its buttons come right under the name, and the details after. */
-  .call {
-    display: flex;
-    flex-direction: column;
+  .legend {
+    justify-content: center;
   }
 
-  .facts {
-    order: 1;
+  .pick {
+    min-height: 122px;
   }
 
   .verdicts {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .call .ghost {
-    align-self: flex-start;
   }
 }
 

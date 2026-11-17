@@ -108,10 +108,14 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - The review never shows whether the user retried. The verified wrong-target rate has to be independent of the proxy label.
 - A review judges the control the bundled decision picks now, not the one logged at click time. After a decision update the page asks again about any click whose pick changed.
 - Keys are `Y` for right, `N` for wrong, `U` for not sure and `Z` to go back. The question is worded as yes or no so the keys match it.
-- Keys are ignored for about a quarter second while the verdict stamp shows, so a double tap cannot mark a click the reviewer has not seen. With reduced motion the stamp does not move, and the wait stays.
-- The review stays mounted while the numbers show, so its place and the way back to earlier marks survive a look at the numbers. Its keys do nothing meanwhile.
+- Keys are ignored for about a quarter second while the verdict stamp shows, and for another 300 ms after the next click comes up, so a double tap cannot mark a click the reviewer has not seen, however late the second tap is. With reduced motion the stamp does not move, and both waits stay. A held Enter on a focused answer marks once.
+- The review stays mounted while the numbers show, so its place and the way back to earlier marks survive a look at the numbers. Its keys do nothing meanwhile. The way back holds only clicks that are still in the log.
 - A mark that cannot be stored leaves the click on screen with a message, and the reviewer marks it again.
-- Between 640 and 880 px wide the drawing shrinks and stays beside the buttons. Below 640 px it sits above them at 42% of the window's height with the three buttons in a row, so a mark never needs scrolling.
+- The question and the three answers sit right under the name, which keeps room for two lines, and the details come after. So the answers are in the same place for every click, whatever the name and however many neighbours. The drawing is never taller than the window leaves room for. In a window at least 560 px wide and 600 px high a mark needs no scrolling. In a smaller one the next drawing is scrolled into view.
+- While a mark is being stamped the screen shows the click as it was before the mark. A fresh mark does not flash the filled button or the line that says what the click was marked.
+- The distance label in the drawing moves to one side when a neighbour sits where it would go, so it never covers a neighbour's name.
+- A failed export or delete says so and leaves the log as it was. A store that failed to open is opened again on the next try.
+- The note above the export says what the capture does with field contents: it looks at them to blank names that repeat them and stores none of them. It also says a name can still hold something personal.
 - Every number shown beside a limit gets as many decimals as it takes to tell it from that limit. At 299 marks with none wrong the bound reads 0.997%, and 124 recovered of 250 reads 49.6%.
 - The review screen shows only how many fires are marked and how many wait. The count the gate needs and the wrong marks are on the numbers page. On the review screen one wrong mark would visibly raise the target from 299 to 473, which is a reason to press something else.
 - The three answers are drawn with the same weight. A filled button marks only what the reviewer chose earlier, on a click they came back to.

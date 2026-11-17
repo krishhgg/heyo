@@ -10,6 +10,12 @@ import { Plate } from './Plate';
  */
 const STAMP_MS = 240;
 
+/**
+ * How long the next click is on screen before it can be marked. A second tap
+ * that comes a little late would otherwise land on a click nobody has looked at.
+ */
+const LOOK_MS = 300;
+
 const VERDICT_WORDS: Record<Verdict, string> = {
   right: 'Right',
   wrong: 'Wrong',
@@ -70,18 +76,25 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
   const [at, setAt] = useState<string | null>(() => firstUnreviewed(fires, done));
   const [trail, setTrail] = useState<string[]>([]);
   const [stamp, setStamp] = useState<Verdict | null>(null);
+  /** True from a mark until the next click has been on screen long enough to be marked. */
+  const [settling, setSettling] = useState(false);
   /** True after a mark could not be stored. The click stays up to be marked again. */
   const [unsaved, setUnsaved] = useState(false);
   const busy = useRef(false);
   const frame = useRef<HTMLDivElement>(null);
+  /** What the click on screen was marked before the mark being stamped now. */
+  const before = useRef<Verdict | undefined>(undefined);
 
   const index = fires.findIndex((f) => reviewKey(f) === at);
   const fire = index >= 0 ? fires[index] : undefined;
+  // The way back holds only clicks that are still in the log. A deleted log takes its marks with it.
+  const live = trail.filter((k) => k !== at && fires.some((f) => reviewKey(f) === k));
 
-  // New fires can arrive while the page is open. Pick one up when there is nothing on screen.
+  // New fires can arrive while the page is open, and the one on screen can be
+  // deleted. Pick one up whenever there is nothing on screen.
   useEffect(() => {
     if (!fire && !busy.current) setAt(firstUnreviewed(fires, done));
-  }, [fires, verdicts]);
+  }, [fires, verdicts, at]);
 
   // In a small window the reviewer scrolls down to the buttons. The next drawing
   // has to come back into view, or it would be marked unseen.
@@ -92,31 +105,39 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
   const mark = (verdict: Verdict) => {
     if (!active || !fire || busy.current) return;
     busy.current = true;
+    setSettling(true);
+    const release = () => {
+      busy.current = false;
+      setSettling(false);
+    };
     const key = reviewKey(fire);
+    before.current = verdicts.get(key);
     setUnsaved(false);
     setStamp(verdict);
     // The wait is the guard against a double tap, so it stays when motion is reduced.
     const shown = new Promise((resolve) => window.setTimeout(resolve, STAMP_MS));
-    void Promise.all([onVerdict(fire, verdict), shown])
-      .then(
-        () => {
-          setTrail((t) => [...t.filter((k) => k !== key), key]);
-          setAt(firstUnreviewed(fires, (k) => k === key || done(k), index));
-        },
-        // The mark was not stored, so the click stays where it is.
-        () => setUnsaved(true),
-      )
-      .finally(() => {
+    void Promise.all([onVerdict(fire, verdict), shown]).then(
+      () => {
+        setTrail((t) => [...t.filter((k) => k !== key), key]);
+        setAt(firstUnreviewed(fires, (k) => k === key || done(k), index));
         setStamp(null);
-        busy.current = false;
-      });
+        // The next click has to be looked at before it can be marked.
+        window.setTimeout(release, LOOK_MS);
+      },
+      () => {
+        // The mark was not stored, so the click stays where it is.
+        setUnsaved(true);
+        setStamp(null);
+        release();
+      },
+    );
   };
 
   const back = () => {
     if (!active || busy.current) return;
-    const previous = trail.filter((k) => k !== at).at(-1);
+    const previous = live.at(-1);
     if (!previous) return;
-    setTrail((t) => t.filter((k) => k !== previous));
+    setTrail(live.filter((k) => k !== previous));
     setAt(previous);
   };
 
@@ -179,7 +200,7 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
                 You have marked every would-be fire heyo has logged so far. New ones show up here as
                 you browse.
               </p>
-              {trail.length > 0 && (
+              {live.length > 0 && (
                 <button class="ghost" onClick={back}>
                   Back to the last one <kbd>Z</kbd>
                 </button>
@@ -194,7 +215,13 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
 
   const { record, picked } = fire;
   const others = record.features.candidates.filter((c) => c.id !== picked.id);
-  const earlier = verdicts.get(reviewKey(fire));
+  // While a mark is being stamped the screen still shows the click as it was
+  // before, so nothing moves and a fresh mark does not look like an earlier one.
+  const earlier = stamp ? before.current : verdicts.get(reviewKey(fire));
+  // A held Enter on a focused answer would mark every click that comes up.
+  const noRepeat = (event: KeyboardEvent) => {
+    if (event.repeat) event.preventDefault();
+  };
 
   return (
     <section class="review">
@@ -208,20 +235,63 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
             <li class="legend-click">your click</li>
             <li class="legend-pick">heyo's pick</li>
             <li class="legend-near">other controls</li>
+            <li class="legend-opaque">an iframe, video or canvas</li>
             <li class="legend-path">the pointer's path</li>
           </ul>
         </div>
 
         <div class="call">
-          <p class="eyebrow">heyo would have sent this click to</p>
-          <h2 class="target" title={nameOf(picked)}>
-            {nameOf(picked)}
-          </h2>
-          <p class="target-kind">
-            {kindOf(picked)}
-            <span class="sep"> · </span>
-            <span class="num">{picked.dist}</span> px from where you clicked
-          </p>
+          {/* The name keeps room for two lines, so the buttons sit in the same place for every click. */}
+          <div class="pick">
+            <p class="eyebrow">heyo would have sent this click to</p>
+            <h2 class="target" title={nameOf(picked)}>
+              {nameOf(picked)}
+            </h2>
+            <p class="target-kind">
+              {kindOf(picked)}
+              <span class="sep"> · </span>
+              <span class="num">{picked.dist}</span> px from where you clicked
+            </p>
+          </div>
+
+          <p class="question">Is that what you were aiming for?</p>
+          <div class="verdicts" aria-busy={settling}>
+            <button
+              class={earlier === 'right' ? 'verdict right chosen' : 'verdict right'}
+              onClick={() => mark('right')}
+              onKeyDown={noRepeat}
+            >
+              Yes, right <kbd>Y</kbd>
+            </button>
+            <button
+              class={earlier === 'wrong' ? 'verdict wrong chosen' : 'verdict wrong'}
+              onClick={() => mark('wrong')}
+              onKeyDown={noRepeat}
+            >
+              No, wrong <kbd>N</kbd>
+            </button>
+            <button
+              class={earlier === 'unsure' ? 'verdict unsure chosen' : 'verdict unsure'}
+              onClick={() => mark('unsure')}
+              onKeyDown={noRepeat}
+            >
+              Not sure <kbd>U</kbd>
+            </button>
+          </div>
+          {unsaved && (
+            <p class="unsaved" role="alert">
+              That mark was not saved. Mark this click again.
+            </p>
+          )}
+          {earlier && (
+            <p class="earlier">
+              You marked this <strong>{VERDICT_WORDS[earlier].toLowerCase()}</strong>. Mark it again
+              to change it or to move on.
+            </p>
+          )}
+          <button class="ghost" onClick={back} disabled={live.length === 0}>
+            Back to the last one <kbd>Z</kbd>
+          </button>
 
           <dl class="facts">
             <dt>Also nearby</dt>
@@ -244,46 +314,6 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
               </span>
             </dd>
           </dl>
-
-          <p class="question">Is that what you were aiming for?</p>
-          {earlier && (
-            <p class="earlier">
-              You marked this <strong>{VERDICT_WORDS[earlier].toLowerCase()}</strong>. Mark it again
-              to change it or to move on.
-            </p>
-          )}
-          <div class="verdicts">
-            <button
-              class={earlier === 'right' ? 'verdict right chosen' : 'verdict right'}
-              onClick={() => mark('right')}
-            >
-              Yes, right <kbd>Y</kbd>
-            </button>
-            <button
-              class={earlier === 'wrong' ? 'verdict wrong chosen' : 'verdict wrong'}
-              onClick={() => mark('wrong')}
-            >
-              No, wrong <kbd>N</kbd>
-            </button>
-            <button
-              class={earlier === 'unsure' ? 'verdict unsure chosen' : 'verdict unsure'}
-              onClick={() => mark('unsure')}
-            >
-              Not sure <kbd>U</kbd>
-            </button>
-          </div>
-          {unsaved && (
-            <p class="unsaved" role="alert">
-              That mark was not saved. Mark this click again.
-            </p>
-          )}
-          <button
-            class="ghost"
-            onClick={back}
-            disabled={trail.filter((k) => k !== at).length === 0}
-          >
-            Back to the last one <kbd>Z</kbd>
-          </button>
         </div>
       </div>
       {progress}

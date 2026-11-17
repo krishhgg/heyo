@@ -67,6 +67,8 @@ function DayRuler({ log, elapsed }: { log: Log; elapsed: number }) {
 export function NumbersView({ log, score, onExport, onDelete }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [armed, setArmed] = useState(false);
+  /** What could not be done to the log, when the store refused. */
+  const [failed, setFailed] = useState<'exported' | 'deleted' | null>(null);
   const keep = useRef<HTMLButtonElement>(null);
   const remove = useRef<HTMLButtonElement>(null);
 
@@ -211,7 +213,7 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
               value={
                 doubleShare === null
                   ? 'none yet'
-                  : `${percent(doubleShare, 0)} (${score.doublePress})`
+                  : `${percent(doubleShare, 1)} (${score.doublePress})`
               }
               needs=""
             />
@@ -225,15 +227,23 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
         </header>
         <p class="sheet-note">
           The log stays in this browser until you export it. An export holds the sites you clicked
-          on and the visible names of nearby controls. heyo never reads what is in a form field, and
-          it blanks any name that repeats what a field holds.
+          on and the visible names of nearby controls. heyo looks at what is typed in a page's
+          fields only to blank the names that repeat it, and stores none of it. A name can still
+          hold something personal, such as the subject of a message shown as a link, so read an
+          export before you share it.
         </p>
         <p class="log-size">
-          <span class="num">{plural(log.records.length, 'logged click')}</span>,{' '}
-          <span class="num">{plural(log.reviews.length, 'review mark')}</span>
+          {plural(log.records.length, 'logged click')} and{' '}
+          {plural(log.reviews.length, 'review mark')}
         </p>
         <div class="log-actions">
-          <button class="primary" onClick={() => void onExport()}>
+          <button
+            class="primary"
+            onClick={() => {
+              setFailed(null);
+              void onExport().catch(() => setFailed('exported'));
+            }}
+          >
             Export the log
           </button>
           {confirming ? (
@@ -246,7 +256,9 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
                 class="danger"
                 aria-disabled={!armed}
                 onClick={() => {
-                  if (armed) void onDelete().then(close);
+                  if (!armed) return;
+                  setFailed(null);
+                  void onDelete().then(close, () => setFailed('deleted'));
                 }}
               >
                 Delete {plural(log.records.length, 'click')} and all marks
@@ -258,6 +270,11 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
             </button>
           )}
         </div>
+        {failed && (
+          <p class="unsaved" role="alert">
+            The log could not be {failed}. Nothing was changed. Try again.
+          </p>
+        )}
         {confirming && (
           <p class="sheet-note">
             Deleting also clears the click counts, so the {GATES.shadowDays} days of shadow mode

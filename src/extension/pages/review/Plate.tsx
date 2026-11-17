@@ -1,6 +1,6 @@
 // A drawing of one logged click, to scale: the click point, what was near it,
 // the control heyo would pick, and how the cursor arrived.
-import { nearestPointInRect } from '../../../core/geometry';
+import { nearestPointInRect, type Rect } from '../../../core/geometry';
 import type { Candidate } from '../../../core/types';
 import { nameOf, type Fire } from './data';
 
@@ -46,7 +46,7 @@ function Box({ candidate, picked, id }: { candidate: Candidate; picked: boolean;
 }
 
 /** The measured gap between the click and the picked control, drawn like a dimension line. */
-function Gap({ picked }: { picked: Candidate }) {
+function Gap({ picked, others }: { picked: Candidate; others: Candidate[] }) {
   const end = nearestPointInRect({ x: 0, y: 0 }, picked.rect);
   const length = Math.hypot(end.x, end.y);
   if (length < 0.05) {
@@ -58,8 +58,23 @@ function Gap({ picked }: { picked: Candidate }) {
   }
   const ux = end.x / length;
   const uy = end.y / length;
-  // The label sits on the far side of the click, away from the control, so it never covers the gap.
-  const anchor = ux > 0.3 ? 'end' : ux < -0.3 ? 'start' : 'middle';
+  // The label goes on the far side of the click, away from the control, so it
+  // never covers the gap. If a neighbour sits there, it goes to one side instead,
+  // so it never covers a neighbour's name either.
+  const text = `${picked.dist} px`;
+  const width = text.length * TEXT * 0.62;
+  const spots = [
+    { x: -ux * 6, y: -uy * 7 },
+    { x: -uy * 9, y: ux * 9 },
+    { x: uy * 9, y: -ux * 9 },
+  ].map((at) => {
+    const anchor = at.x < -2 ? 'end' : at.x > 2 ? 'start' : 'middle';
+    const left = anchor === 'end' ? at.x - width : anchor === 'start' ? at.x : at.x - width / 2;
+    return { ...at, anchor, box: { x: left, y: at.y - TEXT / 2, w: width, h: TEXT } };
+  });
+  const touches = (a: Rect, b: Rect) =>
+    a.x < b.x + b.w + 1 && b.x < a.x + a.w + 1 && a.y < b.y + b.h + 1 && b.y < a.y + a.h + 1;
+  const spot = spots.find((s) => !others.some((c) => touches(s.box, c.rect))) ?? spots[0]!;
   return (
     <g>
       <line class="plate-gap" x1="0" y1="0" x2={end.x} y2={end.y} />
@@ -72,12 +87,12 @@ function Gap({ picked }: { picked: Candidate }) {
       />
       <text
         class="plate-gap-text"
-        x={-ux * 6}
-        y={-uy * 7}
-        text-anchor={anchor}
+        x={spot.x}
+        y={spot.y}
+        text-anchor={spot.anchor}
         dominant-baseline="central"
       >
-        {picked.dist} px
+        {text}
       </text>
     </g>
   );
@@ -127,7 +142,7 @@ export function Plate({ fire }: { fire: Fire }) {
         <circle key={i} class="plate-path-dot" cx={s.x} cy={s.y} r="0.55" />
       ))}
 
-      <Gap picked={picked} />
+      <Gap picked={picked} others={others} />
 
       <g class="plate-click">
         <circle r="2.1" />

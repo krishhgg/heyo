@@ -52,6 +52,7 @@ export async function drive({ page, context, worker, baseUrl, evidence, log }) {
       await review.screenshot({ path: join(evidence, '2-stamp.png') });
     }
     await review.locator('.stamp').waitFor({ state: 'detached' });
+    await review.locator('.verdicts[aria-busy="false"]').waitFor();
     marks[target] = verdict;
     log(`pressed ${key.toUpperCase()}: marked "${target}" ${verdict}`);
   }
@@ -60,6 +61,7 @@ export async function drive({ page, context, worker, baseUrl, evidence, log }) {
   const changed = await review.locator('.target').innerText();
   await review.keyboard.press('y');
   await review.locator('.stamp').waitFor({ state: 'detached' });
+  await review.locator('.verdicts[aria-busy="false"], .empty').first().waitFor();
   marks[changed] = 'right';
   log(`pressed Z then Y: changed "${changed}" to right`);
   log(`progress: ${(await review.locator('.progress-text').innerText()).replace(/\s+/g, ' ')}`);

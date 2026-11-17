@@ -81,10 +81,24 @@ const INPUT_KINDS: Record<string, string> = {
   file: 'file picker',
 };
 
+/** ARIA role names that are not plain words. */
+const ROLE_KINDS: Record<string, string> = {
+  menuitem: 'menu item',
+  menuitemcheckbox: 'menu item',
+  menuitemradio: 'menu item',
+  treeitem: 'tree item',
+  gridcell: 'grid cell',
+  combobox: 'dropdown',
+  textbox: 'text field',
+  searchbox: 'search field',
+  spinbutton: 'number field',
+  radio: 'radio button',
+};
+
 /** A plain-words name for the kind of control a candidate is. */
 export function kindOf(candidate: Candidate): string {
   const { tag, role, type, signals } = candidate;
-  if (role) return role;
+  if (role) return ROLE_KINDS[role] ?? role;
   if (tag === 'a') return 'link';
   if (tag === 'input') {
     if (!type || type === 'text') return 'text field';

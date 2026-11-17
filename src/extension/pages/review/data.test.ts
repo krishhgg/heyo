@@ -108,6 +108,13 @@ describe('the words for a control', () => {
     expect(input('text')).toBe('text field');
   });
 
+  it('uses plain words for ARIA roles', () => {
+    const role = (name: string) => kindOf(candidate(0, 3, { tag: 'div', role: name }));
+    expect(role('menuitem')).toBe('menu item');
+    expect(role('combobox')).toBe('dropdown');
+    expect(role('tab')).toBe('tab');
+  });
+
   it('counts one thing in the singular', () => {
     expect(plural(1, 'click')).toBe('1 click');
     expect(plural(4, 'click')).toBe('4 clicks');
