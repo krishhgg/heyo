@@ -6,7 +6,7 @@
 import { spawn } from 'node:child_process';
 import { chmod, cp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { retargetGates, wrongTargetGate } from '../src/core/gates';
 import type { Score } from '../src/core/metrics';
 import type { LogExport } from '../src/core/types';
@@ -26,6 +26,11 @@ const USAGE = `usage:
 export interface LoopTools extends Tools {
   /** True when macOS sandbox-exec is available to confine the agent. */
   canSandbox: boolean;
+  /**
+   * Folders the runner writes code into and then runs, such as its bundle
+   * cache. The agent may neither read nor write them.
+   */
+  privateDirs: string[];
 }
 
 /** How one decision did on the train split. */
@@ -104,17 +109,32 @@ A rule that only fits the train log will fail there.
 `;
 }
 
-/** A seatbelt profile that hides the logs and makes the repo and the runner's folder read-only. */
-function sandboxProfile(hidden: string[], readOnly: string[], privateDir: string): string {
+/**
+ * A seatbelt profile for the agent. It hides the logs and the runner's own
+ * folders, and it makes read-only everything the runner loads code from.
+ */
+export function sandboxProfile(hidden: string[], readOnly: string[], priv: string[]): string {
   const quote = (path: string) => `"${path.replace(/(["\\])/g, '\\$1')}"`;
   return [
     '(version 1)',
     '(allow default)',
     ...hidden.map((path) => `(deny file-read* (literal ${quote(path)}))`),
-    `(deny file-read* (subpath ${quote(privateDir)}))`,
-    `(deny file-write* (subpath ${quote(privateDir)}))`,
+    ...priv.map((path) => `(deny file-read* (subpath ${quote(path)}))`),
+    ...priv.map((path) => `(deny file-write* (subpath ${quote(path)}))`),
     ...readOnly.map((path) => `(deny file-write* (subpath ${quote(path)}))`),
   ].join('\n');
+}
+
+/**
+ * Everything the runner runs code from, by real path: the repo, the packages
+ * it depends on, which can sit outside the repo behind a link, and Node itself.
+ * The agent can write none of it, or it could change how its own work is scored.
+ */
+export async function codePaths(root: string): Promise<string[]> {
+  const paths = [root, dirname(await realpath(process.execPath))];
+  const packages = await realpath(join(root, 'node_modules')).catch(() => null);
+  if (packages && !packages.startsWith(`${root}/`)) paths.push(packages);
+  return paths;
 }
 
 function runAgent(
@@ -153,6 +173,20 @@ async function copyDecision(from: string, to: string): Promise<void> {
     await mkdir(join(target, '..'), { recursive: true });
     await cp(file, target);
   }
+}
+
+/**
+ * Copies a decision module's source files over the ones in an existing folder.
+ * Files it does not hold, such as the folder's tests, are left alone.
+ */
+export async function copyInto(from: string, to: string): Promise<void> {
+  const targets = decisionFiles(from).map((file) => ({
+    file,
+    target: join(to, file.slice(from.length + 1)),
+  }));
+  // Every folder first, so a copy cannot fail halfway through on a missing one.
+  for (const { target } of targets) await mkdir(dirname(target), { recursive: true });
+  for (const { file, target } of targets) await cp(file, target);
 }
 
 function problemsText(problems: Problem[]): string {
@@ -288,7 +322,12 @@ export async function runLoop(options: RunOptions, tools: LoopTools): Promise<Lo
   if (options.sandbox && !tools.canSandbox) {
     console.log('sandbox-exec is not available here. The agent runs without OS confinement.');
   }
-  const profile = sandboxed ? sandboxProfile(logs, [root], privateDir) : null;
+  const profile = sandboxed
+    ? sandboxProfile(logs, await codePaths(root), [
+        privateDir,
+        ...(await Promise.all(tools.privateDirs.map((path) => realpath(path)))),
+      ])
+    : null;
 
   const rounds: LoopResult['rounds'] = [];
   for (let round = 1; round <= options.rounds; round++) {
@@ -330,9 +369,7 @@ export async function runLoop(options: RunOptions, tools: LoopTools): Promise<Lo
   );
   console.log(`The best decision is in ${best}.`);
   if (options.apply && heldOut.pass) {
-    for (const file of decisionFiles(best)) {
-      await cp(file, join(tools.root, 'src/decision', file.slice(best.length + 1)));
-    }
+    await copyInto(best, join(tools.root, 'src/decision'));
     console.log('Both held-out gates pass. Copied the best decision into src/decision.');
   } else if (options.apply) {
     console.log('A held-out gate did not pass. src/decision is unchanged.');

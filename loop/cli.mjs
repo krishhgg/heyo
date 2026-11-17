@@ -25,6 +25,8 @@ const tools = {
   bundleWorker: (decisionDir) =>
     bundle(join(root, 'scorer/worker.ts'), `worker-${workers++}`, [decisionPlugin(decisionDir)]),
   canSandbox: process.platform === 'darwin' && existsSync('/usr/bin/sandbox-exec'),
+  // Worker bundles are written here and then run. The agent must not get at them.
+  privateDirs: [await cacheDir()],
 };
 
 try {

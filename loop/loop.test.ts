@@ -1,16 +1,23 @@
 // Runs the real loop command with scripted agents in place of a coding agent.
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { splitter } from '../scorer/split';
 import type { LogExport } from '../src/core/types';
 import { DEFAULT_OPTIONS, generate } from '../synth/generate';
-import { isBetter, type LoopResult, type Standing } from './main';
+import {
+  codePaths,
+  copyInto,
+  isBetter,
+  sandboxProfile,
+  type LoopResult,
+  type Standing,
+} from './main';
 
 const run = promisify(execFile);
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -61,6 +68,62 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await rm(dir, { recursive: true, force: true });
+});
+
+describe('codePaths', () => {
+  it('lists the repo, Node, and packages that sit outside the repo behind a link', async () => {
+    const repo = await realpath(await mkdtemp(join(tmpdir(), 'heyo-paths-')));
+    const elsewhere = await realpath(await mkdtemp(join(tmpdir(), 'heyo-packages-')));
+    await symlink(elsewhere, join(repo, 'node_modules'));
+    const paths = await codePaths(repo);
+    expect(paths).toContain(repo);
+    expect(paths).toContain(elsewhere);
+    expect(paths).toContain(dirname(await realpath(process.execPath)));
+    await rm(repo, { recursive: true, force: true });
+    await rm(elsewhere, { recursive: true, force: true });
+  });
+
+  it('adds nothing for packages inside the repo, which the repo rule covers', async () => {
+    const paths = await codePaths(await realpath(root));
+    expect(paths.filter((path) => path.includes('node_modules'))).toEqual(
+      existsSync(join(root, 'node_modules')) &&
+        !(await realpath(join(root, 'node_modules'))).startsWith(await realpath(root))
+        ? [await realpath(join(root, 'node_modules'))]
+        : [],
+    );
+  });
+});
+
+describe('copyInto', () => {
+  it('copies a decision with a subfolder over an existing one and leaves its tests alone', async () => {
+    const from = await realpath(await mkdtemp(join(tmpdir(), 'heyo-best-')));
+    const to = await realpath(await mkdtemp(join(tmpdir(), 'heyo-shipped-')));
+    await mkdir(join(from, 'rules'));
+    await writeFile(join(from, 'index.ts'), 'new index');
+    await writeFile(join(from, 'rules/distance.ts'), 'new rule');
+    await writeFile(join(to, 'index.ts'), 'old index');
+    await writeFile(join(to, 'index.test.ts'), 'the tests');
+
+    await copyInto(from, to);
+    expect(await readFile(join(to, 'index.ts'), 'utf8')).toBe('new index');
+    expect(await readFile(join(to, 'rules/distance.ts'), 'utf8')).toBe('new rule');
+    expect(await readFile(join(to, 'index.test.ts'), 'utf8')).toBe('the tests');
+    await rm(from, { recursive: true, force: true });
+    await rm(to, { recursive: true, force: true });
+  });
+});
+
+describe('the sandbox profile', () => {
+  it('closes private folders to reads and writes and code folders to writes', () => {
+    const profile = sandboxProfile(['/logs/a.json'], ['/repo'], ['/run.private', '/tmp/cache']);
+    expect(profile).toContain('(deny file-read* (literal "/logs/a.json"))');
+    for (const path of ['/run.private', '/tmp/cache']) {
+      expect(profile).toContain(`(deny file-read* (subpath "${path}"))`);
+      expect(profile).toContain(`(deny file-write* (subpath "${path}"))`);
+    }
+    expect(profile).toContain('(deny file-write* (subpath "/repo"))');
+    expect(profile).not.toContain('(deny file-read* (subpath "/repo"))');
+  });
 });
 
 describe('isBetter', () => {
@@ -140,16 +203,37 @@ describe('the loop', () => {
   it.runIf(canSandbox)('stops the agent from reading the log or editing the scorer', async () => {
     const snoop = await agent(
       'snoop',
-      `import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+      `import { readFileSync, writeFileSync, appendFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+       import { tmpdir } from 'node:os';
+       import { dirname, join } from 'node:path';
        const tried = {};
        try { readFileSync(${JSON.stringify(logFile)}); tried.log = 'read'; } catch (error) { tried.log = error.code; }
        try { appendFileSync(${JSON.stringify(join(root, 'scorer/main.ts'))}, ''); tried.scorer = 'wrote'; } catch (error) { tried.scorer = error.code; }
        try { readFileSync(process.cwd() + '.private/best/index.ts'); tried.private = 'read'; } catch (error) { tried.private = error.code; }
+       // The packages the runner loads, which can sit outside the repo behind a link, and Node itself.
+       try { appendFileSync(realpathSync(${JSON.stringify(join(root, 'node_modules/typescript/package.json'))}), ''); tried.packages = 'wrote'; } catch (error) { tried.packages = error.code; }
+       try { appendFileSync(process.execPath, ''); tried.node = 'wrote'; } catch (error) { tried.node = error.code; }
+       // The runner writes worker code into a folder in the temp directory and then runs it.
+       // Other runs have such folders too, and only this run's is closed to the agent.
+       tried.caches = readdirSync(tmpdir())
+         .filter((name) => name.startsWith('heyo-scorer-'))
+         .map((name) => {
+           const probe = join(tmpdir(), name, 'probe-' + process.pid);
+           try { writeFileSync(probe, ''); rmSync(probe); return 'wrote'; } catch (error) { return error.code; }
+         })
+         .filter((code) => code === 'EPERM').length;
        writeFileSync('tried.json', JSON.stringify(tried));`,
     );
     const { workspace } = await loop('snoop', snoop);
     const tried = JSON.parse(await readFile(join(workspace, 'tried.json'), 'utf8')) as object;
-    expect(tried).toEqual({ log: 'EPERM', scorer: 'EPERM', private: 'EPERM' });
+    expect(tried).toEqual({
+      log: 'EPERM',
+      scorer: 'EPERM',
+      private: 'EPERM',
+      packages: 'EPERM',
+      node: 'EPERM',
+      caches: 1,
+    });
   });
 
   it.runIf(canSandbox)('lets the agent run the scorer and the lint on its own copy', async () => {

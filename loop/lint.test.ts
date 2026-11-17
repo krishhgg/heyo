@@ -106,6 +106,30 @@ describe('the decision lint', () => {
     }
   });
 
+  it('rejects randomness reached without writing Math.random', () => {
+    for (const hidden of [
+      `Math['random']()`,
+      `(() => { const m = Math; return m.random(); })()`,
+      `(() => { const { random } = Math; return random(); })()`,
+      `[Math][0].random()`,
+      `(() => 0).constructor('return Math.random()')()`,
+      `(() => 0)['constructor']('return 1')()`,
+    ]) {
+      const messages = lint(body(`const x = ${hidden}; void x;`));
+      expect(messages.join(' '), hidden).toMatch(/pure function|same answer/);
+    }
+    // Ordinary math stays allowed.
+    expect(lint(body(`const x = Math.min(1, Math.hypot(3, 4)); void x;`))).toEqual([]);
+  });
+
+  it('rejects an import of a test file, which is neither linted nor kept', () => {
+    const source = `${HEAD}import { LUCK } from './helper.test';\nexport function decide(features: ClickFeatures): Decision {\n if (features.candidates.length > LUCK) ${refuse}\n ${refuse}\n}\n`;
+    const messages = lint(source, {
+      'helper.test.ts': 'export const LUCK = Math.random() * 137.25;\n',
+    });
+    expect(messages[0]).toMatch(/Import of "\.\/helper\.test"/);
+  });
+
   it('rejects imports from outside the decision and the core', () => {
     const fs = `import { readFileSync } from 'node:fs';\n${body('void readFileSync;')}`;
     expect(lint(fs)[0]).toMatch(/Import of "node:fs"/);

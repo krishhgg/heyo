@@ -61,6 +61,9 @@ const FORBIDDEN_NAMES = new Set([
   'Bun',
 ]);
 
+/** Property names that lead from any value to code the lint cannot see. */
+const HIDDEN_DOORS = new Set(['constructor', '__proto__', 'prototype']);
+
 /** A plain lowercase word or phrase, such as a label keyword or a reason code. */
 const PLAIN_WORDS = /^[a-z][a-z -]*$/;
 
@@ -103,7 +106,8 @@ function lintFile(file: string, name: string, source: string, problems: Problem[
       const from = node.moduleSpecifier;
       if (from && ts.isStringLiteral(from)) {
         const path = from.text.replace(/\.ts$/, '');
-        const own = path.startsWith('./') && !path.includes('..');
+        // A test file is neither linted nor kept with the decision, so it may not be imported.
+        const own = path.startsWith('./') && !path.includes('..') && !path.endsWith('.test');
         if (!own && !ALLOWED_IMPORTS.has(path)) {
           report(
             node,
@@ -140,6 +144,31 @@ function lintFile(file: string, name: string, source: string, problems: Problem[
       node.name.text === 'random'
     ) {
       report(node, 'Math.random. A decision must give the same answer for the same click.');
+    }
+    // Math is only ever written as Math.<name>. Any other use, such as
+    // Math['random'], an alias or a destructuring, could reach random unseen.
+    if (ts.isIdentifier(node) && node.text === 'Math') {
+      const parent = node.parent;
+      const isObject = ts.isPropertyAccessExpression(parent) && parent.expression === node;
+      const isName =
+        (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+        (ts.isPropertyAssignment(parent) && parent.name === node) ||
+        (ts.isPropertySignature(parent) && parent.name === node);
+      if (!isObject && !isName) {
+        report(
+          node,
+          'Math used other than as Math.<name>. A decision must give the same answer for the same click.',
+        );
+      }
+    }
+    // The constructor of any function builds new code from a string, which reaches everything.
+    const key = ts.isPropertyAccessExpression(node)
+      ? node.name.text
+      : ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)
+        ? node.argumentExpression.text
+        : null;
+    if (key !== null && HIDDEN_DOORS.has(key)) {
+      report(node, `Use of "${key}". A decision is a pure function of the click's features.`);
     }
 
     if (ts.isNumericLiteral(node)) {
