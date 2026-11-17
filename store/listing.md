@@ -30,7 +30,7 @@ The review page, behind the toolbar button, shows each of those would-be clicks 
 Privacy:
 
 - Nothing leaves your device. heyo has no server and makes no network calls.
-- It never records what you type or what a password field holds. It reads the page's text fields only to blank anything you typed out of the button names it keeps.
+- It never stores the contents of the fields you type in, and never what a password field holds. It reads the page's text fields only to blank what you typed out of the button names it keeps. The privacy policy lists the two cases where typed text can still appear in a name.
 - You can export the log to a file or delete it at any time.
 
 heyo is open source: https://github.com/krishhgg/heyo
@@ -63,7 +63,7 @@ heyo stores its settings there, such as whether retargeting is on and when the u
 
 **Permission justification: host permissions (content scripts on all sites)**
 
-A missed click can happen on any page. The content script listens for the user's own clicks. When one lands on empty space it looks at the clickable elements within 30 px of it and at the element under the pointer. To keep typed text out of the log, it also reads the page's text fields at that moment, in memory, and blanks anything they hold out of the names it records. While the pointer moves, and around a click, it is told when the page changes, and keeps only the fact and a count. With retargeting on, it notes whether a key was pressed between a click and the moment it sends the click on, never which key.
+A missed click can happen on any page. The content script listens for the user's own clicks. When one lands on empty space it looks at the clickable elements within 30 px of it and at the element under the pointer. To keep typed text out of the log, it also reads the page's text fields at that moment, and at the user's next click if that lands on a control, in memory, and blanks what they hold out of the names it records. It reads the selected text and the page's address before and after a click to tell whether they changed, and stores only the hostname. While the pointer moves, and around a click, the browser tells it of each change to the page, old attribute values included, and it keeps only the fact and counts. With retargeting on, it notes whether a key was pressed between a click and the moment it sends the click on, never which key.
 
 **Remote code**
 
@@ -73,9 +73,9 @@ No. All code ships in the package.
 
 heyo does not transmit any user data. Everything below stays in the extension's storage on the user's device until the user deletes it or exports it to a file.
 
-- Website content: the short visible names of clickable elements near a click, and the text directly in the element under the pointer, 40 characters at most each. Also the kind of each element, its size and position, and whether the page changed around the click.
+- Website content: the short visible names of clickable elements near a click, and the text directly in the element under the pointer, 40 characters at most each. Also the kind of each element, its size and position, whether it was disabled, how many click handlers were under the pointer, and whether and how much the page changed around the click.
 - Web history: the hostname of the page a logged click was on. No paths.
-- User activity: clicks, the pointer path over the 300 ms before a click, how long the button was held, where the next click went, and whether the window had focus.
+- User activity: a daily count of clicks per site, and for a logged click its position, the pointer path over the 300 ms before it, how long the button was held, where the next click went and what it hit, and whether the window had focus.
 
 heyo does not sell data, does not use it for anything unrelated to its single purpose, and does not use it for creditworthiness or lending.
 

@@ -10,40 +10,48 @@ heyo keeps a log of some of your clicks on your own device. It sends nothing any
 
 ## What heyo records
 
-For every plain left click, heyo counts it under the site's hostname and the day.
+For every plain left click, heyo adds one to a count for the site's hostname and the day. There are four counts: all clicks, clicks that hit something, clicks on empty space the page reacted to, and clicks on empty space the page ignored.
 
-When a click lands on empty space near something clickable, heyo also records:
+When a click lands on empty space near something clickable, heyo also stores a record of that click. A record holds:
 
-- the hostname of the site, and the time
-- where in the window the click landed, the window's size and its zoom
+- a random id, the hostname of the site, and the time
+- where in the window the click landed, the window's size, and the display scale, which is the screen's pixel density times the page zoom
 - whether the click was in the page itself or in an embedded frame, and whether the window had focus
-- the clickable things within 30 px: their size and position, their kind (the tag, the role, the type of an input, and why heyo took them for clickable), whether they were disabled, and a short name for each, at most 40 characters, such as the text on a button
+- for each clickable thing within 30 px: its size and position, how far it was, its kind (the tag, the role, the type of an input, and the signs heyo took it for clickable by), whether it was disabled, a short name, at most 40 characters, such as the text on a button, and whether part of that name was blanked
 - what was under the pointer: the kind of element, and at most 40 characters of the text directly in it
 - the path of the mouse pointer over the 300 milliseconds before the click
 - how long the button was held and how far the pointer moved while it was down
-- how the page reacted: whether its content, focus, selection, scroll position or address changed, how many changes there were, and whether the page was already changing just before the click. Only the fact of a change is kept, never what changed
+- how the page reacted: whether its content, focus, selection, scroll position or address changed, how many changes to its content there were and how many of those were at the click or at a nearby clickable thing, whether focus moved the way the browser moves it by itself, whether focus left a text field, and whether the page was already changing just before the click. Only the fact of a change and these counts are kept, never what changed
 - how many click handlers the page had on the elements under the pointer
-- where your next click went, if it came within 1.5 seconds: how far from the first, how soon, and whether it hit one of those clickable things
-- which of those things heyo would have clicked for you, and, once you turn retargeting on, what it did
+- your next click, if it came within 1.5 seconds: how soon, how far from the first, what kind of thing it hit (a control, text, empty space or an embedded region), whether that was one of the clickable things in the record, and how far that control was from the first click
+- which of those things heyo would have clicked for you and why not if it would not have, and, once you turn retargeting on, what it did
 - the version of heyo and of its decision rule
 
-On the review page you can mark heyo's choices right or wrong. Those marks are stored with the log.
+On the review page you can mark heyo's choices right or wrong. Those marks are stored with the log, each with its time.
 
 ## What heyo reads and does not keep
 
-- **What your text fields hold.** At a click on empty space, heyo reads the text fields on the page, password fields among them, and the names of files you have chosen in a file field. It does this for one purpose: to blank the same text out of the names it is about to record. What it read is dropped at once. It is never stored and never leaves the page.
+- **What your text fields hold.** heyo reads the text fields on the page, password fields among them, the text of editable areas, and the names of files you have chosen in a file field. It does this when you click on empty space, again at your next click if that one lands on a control, and, with retargeting on, at the moment it sends a click on. The one purpose is to blank the same text out of the names it is about to record or compare. What it read is dropped at once. It is never stored and never leaves the page.
 - **The selected text**, before and after a click, to tell whether the click changed the selection.
-- **Whether the page is changing.** While the pointer moves, and from a press until a moment after the click, the browser tells heyo when the page changes. heyo keeps the fact and a count, not what changed.
+- **The page's full address**, before and after a click, to tell whether the click changed it. Only the hostname is ever stored.
+- **Changes to the page.** While the pointer moves, and from a press until a moment after the click, the browser tells heyo of each change to the page's content. For a changed attribute that includes its old value, which heyo compares with the new one to set aside writes that changed nothing and markers that only follow focus. heyo keeps the fact and the counts, not what changed.
 - **Whether a key was pressed**, only with retargeting on, and only between a click and the moment heyo sends it on, so that it sends nothing once you have moved on. It never looks at which key.
 
 ## What heyo never records
 
-- Anything you type. The value of a form field and the text of an editable area are never recorded.
+- The contents of a form field or of an editable area. They are never stored as such.
 - Passwords. A password field is only ever recorded as the words "password field".
 - Page addresses beyond the hostname. No paths, no query strings.
 - Page content other than the short names of clickable things near a click and the short text under the pointer.
 
-Pages sometimes repeat what you typed in a button or a link, such as "Search for ...". heyo compares each name, and the text under the pointer, with what the page's text fields hold at that moment and blanks any part that matches. One case is not covered: text you wrote earlier that a page now shows as its own content, such as the subject of a message you sent, can appear as the name of a link.
+## Where typed text can still end up in the log
+
+Pages sometimes repeat what you typed in a button or a link, such as "Search for ...". heyo compares each name, and the text under the pointer, with what the page's text fields hold at that moment and blanks any part that matches. Two cases are not covered:
+
+- Text of one or two characters. heyo does not match text that short, so if you type "Al" into a field and the page shows a button named "Al", that name is recorded.
+- Text you wrote earlier that a page now shows as its own content. The subject of a message you sent can appear as the name of a link.
+
+If a page has more than 300 text fields, or a field holds more than 20,000 characters, heyo cannot check them all, and it blanks every name whole.
 
 ## Where it is stored
 
@@ -60,7 +68,9 @@ Nothing, unless you choose "Export the log" on the review page. That saves a fil
 
 ## Changes to pages
 
-In shadow mode, which is how heyo starts, it changes nothing on any page. If you turn retargeting on, heyo clicks the control you aimed for when you miss it, on a short list of sites, and nothing else.
+In shadow mode, which is how heyo starts, it changes nothing you can see on any page and sends the page no events. To know which elements have click handlers, it wraps the page's function for adding event listeners. The wrapper notes which elements get a click listener and passes every call through unchanged.
+
+If you turn retargeting on, heyo clicks the control you aimed for when you miss it, on a short list of sites, and nothing else.
 
 ## Contact
 
