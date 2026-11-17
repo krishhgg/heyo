@@ -55,4 +55,28 @@ Every number in `ASSUMPTIONS` in `synth/generate.ts` is a guess about behavior. 
 - `spreadDivisor` sets how often an aimed click misses.
 - `deliberateNearShare` sets how often a deliberate click on empty space lands right beside a control. The wrong-target rate on a synthetic log follows almost directly from it, and nobody has measured it.
 
+Presses land on whole pixels, and a box's right and bottom edges are outside it, as in a browser. A corrective movement heads for the target.
+
 A synthetic log shows that the pipeline works and gives the agent loop something to tune against. It says nothing about how often real people miss. Only a real log does.
+
+## The scripted log
+
+`npm run scripted` takes the clicks the generator plans and plays them with a real mouse through the built extension. Each scene is drawn as real elements on a fixture page, the pointer follows the planned path in real time, and the extension logs what it measures. The result is a log like any other, with a review mark for every candidate, written from what each click was planned for.
+
+```bash
+npm run build
+npm run scripted -- --out scripted.json                 # 24 weeks, 10 to 25 minutes
+npm run scripted -- --out scripted.json --seed 2 --workers 12
+npm run gates -- scripted.json
+```
+
+It plays every planned click that lands on empty space within 30 px of a control, about 8,800 of 134,400. It also plays 2% of the others, and it counts the rest as the generator counted them, so the miss rate is that of the whole simulated stretch.
+
+The summary it prints is a check on the capture code:
+
+- `Records the extension logged` against the clicks played.
+- `Clicks beside a control that left no record`, split into the two cases where that is right and the unexplained ones, which are bugs.
+- `Retries on the target that the log attached to the miss`.
+- `Nearest control the same as the generator simulated`.
+
+The scripted log has the same limit as the synthetic one. Its clicks come from the same guesses about behavior, so it says nothing about how often real people miss. What it adds is that every feature in it was measured by the real extension in a real browser.

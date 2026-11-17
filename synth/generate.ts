@@ -89,10 +89,16 @@ export const ASSUMPTIONS = {
   dwellMedianMs: 110,
   /** Share of aimed movements that end with a small corrective movement. */
   correctionShare: 0.3,
+  /**
+   * A corrective movement heads for the target, within this many radians. The
+   * first movement lands off, and the correction closes part of the gap. A hand
+   * that is already on its target does not correct its way off it.
+   */
+  correctionSpread: Math.PI / 4,
 } as const;
 
 const DAY_MS = 86_400_000;
-const CANDIDATE_RADIUS = 30;
+export const CANDIDATE_RADIUS = 30;
 const MAX_CANDIDATES = 8;
 const PATH_WINDOW_MS = 300;
 
@@ -150,7 +156,7 @@ const LINK_LABELS = [
 type Layout = 'lone' | 'toolbar' | 'buttons' | 'links' | 'cards' | 'form' | 'media';
 const LAYOUTS: Layout[] = ['lone', 'toolbar', 'buttons', 'links', 'cards', 'form', 'media'];
 
-interface Site {
+export interface Site {
   name: string;
   /** How often the user is on this site, relative to the others. */
   weight: number;
@@ -165,7 +171,7 @@ interface Site {
   irreversibleShare: number;
 }
 
-interface Control {
+export interface Control {
   rect: Rect;
   kind: 'control' | 'opaque';
   tag: string;
@@ -177,14 +183,24 @@ interface Control {
 }
 
 /** What the generator knows about a click and the log does not. */
-type Intent = 'aim' | 'deliberate' | 'drag' | 'long-press';
+export type Intent = 'aim' | 'deliberate' | 'drag' | 'long-press';
 
 function round(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+/** True when a press at p lands on a box as a browser decides it: the right and bottom edges are outside. */
 function contains(rect: Rect, p: Point): boolean {
-  return p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h;
+  return p.x >= rect.x && p.x < rect.x + rect.w && p.y >= rect.y && p.y < rect.y + rect.h;
+}
+
+/**
+ * A pointer reports whole pixels. Without this a simulated click could miss a
+ * control by a fraction of a pixel, which no pointer can do: played through a
+ * real browser, such a click lands on the control.
+ */
+function onPixel(p: Point): Point {
+  return { x: Math.round(p.x), y: Math.round(p.y) };
 }
 
 function center(rect: Rect): Point {
@@ -404,10 +420,11 @@ function arrival(
     const t = -dwell - (durationMs - elapsed);
     if (t < -PATH_WINDOW_MS) break;
     const left = distance * (1 - minimumJerk(elapsed / durationMs));
+    // Whole pixels, as a pointer reports them.
     samples.push({
       t: Math.round(t),
-      x: round(end.x - Math.cos(angle) * left + (left > 0 ? rng.normal(0, 0.3) : 0)),
-      y: round(end.y - Math.sin(angle) * left + (left > 0 ? rng.normal(0, 0.3) : 0)),
+      x: Math.round(end.x - Math.cos(angle) * left + (left > 0 ? rng.normal(0, 0.3) : 0)),
+      y: Math.round(end.y - Math.sin(angle) * left + (left > 0 ? rng.normal(0, 0.3) : 0)),
     });
   }
   return samples.reverse();
@@ -422,14 +439,26 @@ function dwellMs(rng: Random): number {
   return Math.min(900, Math.max(20, rng.logNormal(ASSUMPTIONS.dwellMedianMs, 0.55)));
 }
 
-/** The cursor path of an aimed movement that ended at the click point. */
-function aimedPath(rng: Random, site: Site, angle: number, distance: number, width: number) {
+/**
+ * The cursor path of an aimed movement that ended at the click point.
+ * `toward` is the direction from the click point to the middle of the target.
+ */
+function aimedPath(
+  rng: Random,
+  site: Site,
+  angle: number,
+  distance: number,
+  width: number,
+  toward: number,
+) {
   const dwell = dwellMs(rng);
   if (!rng.chance(ASSUMPTIONS.correctionShare)) {
     return arrival(rng, site.hz, angle, distance, movementMs(distance, width), dwell);
   }
-  // The main movement stops a few px off, and a short second movement closes the gap.
-  const offAngle = rng.uniform(0, 2 * Math.PI);
+  // The main movement stops a few px off, on the far side from the target, and
+  // a short second movement toward the target closes part of the gap.
+  const { correctionSpread } = ASSUMPTIONS;
+  const offAngle = toward + rng.uniform(-correctionSpread, correctionSpread);
   const off = rng.uniform(3, 12);
   const fixMs = rng.uniform(60, 120);
   const pause = rng.uniform(40, 110);
@@ -454,6 +483,32 @@ const NO_REACTION: Reaction = {
   navigation: false,
 };
 
+/**
+ * One click as the user makes it, before any page has seen it: where the press
+ * lands, how the pointer got there, and what the user does next. The generator
+ * turns a plan into a simulated record. The scripted run plays the same plan
+ * with a real mouse on a real page.
+ */
+export interface Plan {
+  intent: Intent;
+  /** The controls in view, in scene px. */
+  scene: Control[];
+  /** The control the user aimed at. Null for a deliberate click. */
+  target: Control | null;
+  /** Where the press lands. */
+  p: Point;
+  /** True when the press lands on a control or an opaque region. Nothing below is planned then. */
+  hit: boolean;
+  /** Pointer samples in the 300 ms before the press, relative to p. */
+  path: PathSample[];
+  press: { ms: number; move: number };
+  focused: boolean;
+  /** What a simulated page does about the click. */
+  reaction: Reaction;
+  /** A second press, `dt` ms after the first. */
+  second: { q: Point; dt: number } | null;
+}
+
 interface Simulated {
   /** How the click counts toward the day's totals. */
   count: 'hits' | 'emptyReacted' | 'emptyIgnored';
@@ -462,14 +517,14 @@ interface Simulated {
   target?: number | null;
 }
 
-interface Draft {
-  p: Point;
-  near: Near;
-  path: PathSample[];
-  press: { ms: number; move: number };
-  focused: boolean;
-  reaction: Reaction;
-  followUp: FollowUp | null;
+/** One simulated click: the plan, and what a simulated extension made of it. */
+export interface Click extends Simulated {
+  /** The day of simulated use, from 0. */
+  day: number;
+  /** Epoch ms of the click. */
+  t: number;
+  site: Site;
+  plan: Plan;
 }
 
 function pressOf(rng: Random): { ms: number; move: number } {
@@ -542,48 +597,165 @@ function emptyPoint(rng: Random, scene: Control[], clearance: number): Point {
   return p;
 }
 
+const NO_PLAN = {
+  path: [],
+  press: { ms: 0, move: 0 },
+  focused: true,
+  reaction: NO_REACTION,
+  second: null,
+};
+
+/** A click aimed at a control. Most land on it. */
+function planAimed(rng: Random, site: Site): Plan {
+  const scene = buildScene(rng, site);
+  const targets = scene.filter((c) => c.kind === 'control' && !c.disabled);
+  const target = rng.pick(targets.length > 0 ? targets : scene);
+  const angle = rng.uniform(0, 2 * Math.PI);
+  const distance = Math.min(900, Math.max(30, rng.logNormal(240, 0.6)));
+  const p = onPixel(aimAt(rng, target, angle, 1));
+  if (hitAt(scene, p)) return { ...NO_PLAN, intent: 'aim', scene, target, p, hit: true };
+
+  const width = Math.min(target.rect.w, target.rect.h);
+  const middle = center(target.rect);
+  const toward = Math.atan2(middle.y - p.y, middle.x - p.x);
+  let second: Plan['second'] = null;
+  if (rng.chance(ASSUMPTIONS.doubleClickShare)) {
+    const q = onPixel({ x: p.x + rng.normal(0, 0.6), y: p.y + rng.normal(0, 0.6) });
+    second = { q, dt: rng.uniform(110, 320) };
+  } else if (rng.chance(ASSUMPTIONS.retryShare)) {
+    const dt = Math.max(160, rng.logNormal(ASSUMPTIONS.retryMedianMs, 0.45));
+    if (dt <= 1500) {
+      const again = aimAt(rng, target, rng.uniform(0, 2 * Math.PI), ASSUMPTIONS.retryCare);
+      second = { q: onPixel(again), dt };
+    }
+  }
+  return {
+    intent: 'aim',
+    scene,
+    target,
+    p,
+    hit: false,
+    second,
+    path: aimedPath(rng, site, angle, distance, width, toward),
+    press: pressOf(rng),
+    focused: !rng.chance(ASSUMPTIONS.unfocusedShare),
+    reaction: reactionTo(rng, site, site.reactShare),
+  };
+}
+
+/** A press meant for empty space: a plain click, the start of a drag, or a long press. */
+function planDeliberate(rng: Random, site: Site, intent: Intent): Plan {
+  const scene = buildScene(rng, site);
+  const near14 = rng.chance(ASSUMPTIONS.deliberateNearShare);
+  const clearance = near14
+    ? rng.uniform(1, ASSUMPTIONS.nearPx)
+    : rng.uniform(ASSUMPTIONS.nearPx, 220);
+  const p = onPixel(emptyPoint(rng, scene, clearance));
+  if (hitAt(scene, p)) return { ...NO_PLAN, intent, scene, target: null, p, hit: true };
+  const near = candidatesAt(scene, p);
+
+  let path: PathSample[] = [];
+  const how = rng.next();
+  if (how >= ASSUMPTIONS.deliberateResting + ASSUMPTIONS.deliberateLeaving) {
+    const distance = Math.min(900, Math.max(30, rng.logNormal(240, 0.6)));
+    path = arrival(
+      rng,
+      site.hz,
+      rng.uniform(0, 2 * Math.PI),
+      distance,
+      movementMs(distance, 20),
+      dwellMs(rng),
+    );
+  } else if (how >= ASSUMPTIONS.deliberateResting && near.controls.length > 0) {
+    // The pointer was on a control and moves off it to click beside it.
+    const from = center(near.controls[0]!.rect);
+    const distance = Math.hypot(from.x - p.x, from.y - p.y);
+    const angle = Math.atan2(p.y - from.y, p.x - from.x);
+    path = arrival(rng, site.hz, angle, distance, rng.uniform(150, 300), dwellMs(rng));
+  }
+
+  let second: Plan['second'] = null;
+  if (rng.chance(ASSUMPTIONS.deliberateThenClickShare)) {
+    const dt = Math.max(200, rng.logNormal(700, 0.4));
+    const next = rng.pick(scene);
+    if (dt <= 1500) second = { q: onPixel(center(next.rect)), dt };
+  }
+
+  let press = pressOf(rng);
+  let reaction = reactionTo(rng, site, 0.6);
+  if (intent === 'drag') {
+    press = { ms: Math.round(rng.uniform(250, 1200)), move: round(rng.uniform(12, 300)) };
+    if (rng.chance(0.5)) reaction = { ...reaction, selection: true };
+  } else if (intent === 'long-press') {
+    press = { ms: Math.round(rng.uniform(600, 2000)), move: press.move };
+  }
+  return {
+    intent,
+    scene,
+    target: null,
+    p,
+    hit: false,
+    path,
+    press,
+    focused: true,
+    reaction,
+    second,
+  };
+}
+
+/** Plans the next click on a site: what the user means to do and how it comes out. */
+function planClick(rng: Random, site: Site): Plan {
+  const roll = rng.next();
+  const { deliberateShare, dragShare, longPressShare } = ASSUMPTIONS;
+  if (roll < deliberateShare) return planDeliberate(rng, site, 'deliberate');
+  if (roll < deliberateShare + dragShare) return planDeliberate(rng, site, 'drag');
+  if (roll < deliberateShare + dragShare + longPressShare) {
+    return planDeliberate(rng, site, 'long-press');
+  }
+  return planAimed(rng, site);
+}
+
 /**
  * A short name for one set of options. It goes into every record id, so two
  * logs made with different settings never share an id, and merging them keeps
  * every click with its own marks.
  */
-function corpusOf(options: SynthOptions): string {
-  const text = JSON.stringify(Object.entries(options).sort(([a], [b]) => (a < b ? -1 : 1)));
+function corpusOf({ seed, days, sites, clicksPerDay, start }: SynthOptions): string {
+  // Only the generator's own options. A caller may pass more, such as how many browsers to use.
+  const text = JSON.stringify([seed, days, sites, clicksPerDay, start]);
   let hash = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
-export function generate(options: SynthOptions = DEFAULT_OPTIONS): LogExport {
+/**
+ * Every click of a simulated stretch of use, in order. `generate` collects them
+ * into a log. The scripted run plays the same plans through the real extension.
+ */
+export function* clicks(options: SynthOptions = DEFAULT_OPTIONS): Generator<Click> {
   const rng = new Random(options.seed);
-  const corpus = corpusOf(options);
   const sites = makeSites(rng, options.sites);
   const weights = sites.map((s) => s.weight);
-  const records: ClickRecord[] = [];
-  const reviews: Review[] = [];
-  const counts = new Map<string, DayCount>();
+  const corpus = corpusOf(options);
   let nextId = 0;
 
-  function finish(
-    site: Site,
-    t: number,
-    draft: Draft,
-    intent: Intent,
-    target: Control | null,
-  ): Simulated {
-    const didReact = Object.values(draft.reaction).some(Boolean);
+  /** The record a simulated extension would log for a planned click. */
+  function simulate(site: Site, t: number, plan: Plan): Simulated {
+    if (plan.hit) return { count: 'hits' };
+    const didReact = Object.values(plan.reaction).some(Boolean);
     const count = didReact ? 'emptyReacted' : 'emptyIgnored';
-    if (draft.near.candidates.length === 0) return { count };
+    const near = candidatesAt(plan.scene, plan.p);
+    if (near.candidates.length === 0) return { count };
     const features: ClickFeatures = {
-      candidates: draft.near.candidates,
-      path: draft.path,
-      press: draft.press,
-      focused: draft.focused,
+      candidates: near.candidates,
+      path: plan.path,
+      press: plan.press,
+      focused: plan.focused,
       reacted: didReact,
-      reaction: draft.reaction,
+      reaction: plan.reaction,
       blurred: rng.chance(0.45),
       leftField: false,
-      mutations: { total: draft.reaction.mutation ? 1 : 0, near: 0 },
+      mutations: { total: plan.reaction.mutation ? 1 : 0, near: 0 },
       churn: site.churn,
       under: {
         tag: rng.pick(['div', 'div', 'section', 'li', 'td', 'body']),
@@ -596,6 +768,7 @@ export function generate(options: SynthOptions = DEFAULT_OPTIONS): LogExport {
       topFrame: !rng.chance(0.05),
       listenersOnPath: rng.int(0, 3),
     };
+    const { second } = plan;
     const record: ClickRecord = {
       v: 1,
       id: `synth-${corpus}-${nextId++}`,
@@ -605,140 +778,53 @@ export function generate(options: SynthOptions = DEFAULT_OPTIONS): LogExport {
       decision: { action: 'refuse', reason: 'no-candidate' },
       decisionVersion: 'synthetic',
       extensionVersion: 'synthetic',
-      followUp: draft.followUp,
+      followUp: second ? followUpAt(plan.scene, near, plan.p, second.q, second.dt) : null,
     };
-    const aimed = intent === 'aim' && target ? draft.near.controls.indexOf(target) : -1;
+    const aimed = plan.target ? near.controls.indexOf(plan.target) : -1;
     return { count, record, target: aimed >= 0 ? aimed : null };
-  }
-
-  function aimedClick(site: Site, t: number): Simulated {
-    const scene = buildScene(rng, site);
-    const targets = scene.filter((c) => c.kind === 'control' && !c.disabled);
-    const target = rng.pick(targets.length > 0 ? targets : scene);
-    const angle = rng.uniform(0, 2 * Math.PI);
-    const distance = Math.min(900, Math.max(30, rng.logNormal(240, 0.6)));
-    const p = aimAt(rng, target, angle, 1);
-    if (hitAt(scene, p)) return { count: 'hits' };
-
-    const near = candidatesAt(scene, p);
-    const width = Math.min(target.rect.w, target.rect.h);
-    let followUp: FollowUp | null = null;
-    if (rng.chance(ASSUMPTIONS.doubleClickShare)) {
-      const q = { x: p.x + rng.normal(0, 0.6), y: p.y + rng.normal(0, 0.6) };
-      followUp = followUpAt(scene, near, p, q, rng.uniform(110, 320));
-    } else if (rng.chance(ASSUMPTIONS.retryShare)) {
-      const dt = Math.max(160, rng.logNormal(ASSUMPTIONS.retryMedianMs, 0.45));
-      if (dt <= 1500) {
-        const q = aimAt(rng, target, rng.uniform(0, 2 * Math.PI), ASSUMPTIONS.retryCare);
-        followUp = followUpAt(scene, near, p, q, dt);
-      }
-    }
-    const draft: Draft = {
-      p,
-      near,
-      path: aimedPath(rng, site, angle, distance, width),
-      press: pressOf(rng),
-      focused: !rng.chance(ASSUMPTIONS.unfocusedShare),
-      reaction: reactionTo(rng, site, site.reactShare),
-      followUp,
-    };
-    return finish(site, t, draft, 'aim', target);
-  }
-
-  function deliberateClick(site: Site, t: number, intent: Intent): Simulated {
-    const scene = buildScene(rng, site);
-    const near14 = rng.chance(ASSUMPTIONS.deliberateNearShare);
-    const clearance = near14
-      ? rng.uniform(1, ASSUMPTIONS.nearPx)
-      : rng.uniform(ASSUMPTIONS.nearPx, 220);
-    const p = emptyPoint(rng, scene, clearance);
-    if (hitAt(scene, p)) return { count: 'hits' };
-    const near = candidatesAt(scene, p);
-
-    let path: PathSample[] = [];
-    const how = rng.next();
-    if (how >= ASSUMPTIONS.deliberateResting + ASSUMPTIONS.deliberateLeaving) {
-      const distance = Math.min(900, Math.max(30, rng.logNormal(240, 0.6)));
-      path = arrival(
-        rng,
-        site.hz,
-        rng.uniform(0, 2 * Math.PI),
-        distance,
-        movementMs(distance, 20),
-        dwellMs(rng),
-      );
-    } else if (how >= ASSUMPTIONS.deliberateResting && near.controls.length > 0) {
-      // The pointer was on a control and moves off it to click beside it.
-      const from = center(near.controls[0]!.rect);
-      const distance = Math.hypot(from.x - p.x, from.y - p.y);
-      const angle = Math.atan2(p.y - from.y, p.x - from.x);
-      path = arrival(rng, site.hz, angle, distance, rng.uniform(150, 300), dwellMs(rng));
-    }
-
-    let followUp: FollowUp | null = null;
-    if (rng.chance(ASSUMPTIONS.deliberateThenClickShare)) {
-      const dt = Math.max(200, rng.logNormal(700, 0.4));
-      const next = rng.pick(scene);
-      if (dt <= 1500) followUp = followUpAt(scene, near, p, center(next.rect), dt);
-    }
-
-    let press = pressOf(rng);
-    let reaction = reactionTo(rng, site, 0.6);
-    if (intent === 'drag') {
-      press = { ms: Math.round(rng.uniform(250, 1200)), move: round(rng.uniform(12, 300)) };
-      if (rng.chance(0.5)) reaction = { ...reaction, selection: true };
-    } else if (intent === 'long-press') {
-      press = { ms: Math.round(rng.uniform(600, 2000)), move: press.move };
-    }
-    return finish(
-      site,
-      t,
-      { p, near, path, press, focused: true, reaction, followUp },
-      intent,
-      null,
-    );
   }
 
   for (let day = 0; day < options.days; day++) {
     for (let i = 0; i < options.clicksPerDay; i++) {
       const site = sites[rng.weighted(weights)]!;
       const t = options.start + day * DAY_MS + Math.floor(rng.uniform(0, 10 * 3_600_000));
-      const roll = rng.next();
-      const { deliberateShare, dragShare, longPressShare } = ASSUMPTIONS;
-      const result =
-        roll < deliberateShare
-          ? deliberateClick(site, t, 'deliberate')
-          : roll < deliberateShare + dragShare
-            ? deliberateClick(site, t, 'drag')
-            : roll < deliberateShare + dragShare + longPressShare
-              ? deliberateClick(site, t, 'long-press')
-              : aimedClick(site, t);
+      const plan = planClick(rng, site);
+      yield { day, t, site, plan, ...simulate(site, t, plan) };
+    }
+  }
+}
 
-      const key = `${dayOf(t)}|${site.name}`;
-      const count = counts.get(key) ?? {
-        day: dayOf(t),
-        site: site.name,
-        clicks: 0,
-        hits: 0,
-        emptyReacted: 0,
-        emptyIgnored: 0,
-      };
-      count.clicks++;
-      count[result.count]++;
-      counts.set(key, count);
+export function generate(options: SynthOptions = DEFAULT_OPTIONS): LogExport {
+  const records: ClickRecord[] = [];
+  const reviews: Review[] = [];
+  const counts = new Map<string, DayCount>();
 
-      if (!result.record) continue;
-      records.push(result.record);
-      // The stand-in for hand review: the control the user aimed at is right, any other is wrong.
-      for (const candidate of result.record.features.candidates) {
-        if (candidate.kind !== 'control') continue;
-        reviews.push({
-          recordId: result.record.id,
-          candidate: candidate.id,
-          verdict: candidate.id === result.target ? 'right' : 'wrong',
-          t: result.record.t,
-        });
-      }
+  for (const click of clicks(options)) {
+    const day = dayOf(click.t);
+    const key = `${day}|${click.site.name}`;
+    const count = counts.get(key) ?? {
+      day,
+      site: click.site.name,
+      clicks: 0,
+      hits: 0,
+      emptyReacted: 0,
+      emptyIgnored: 0,
+    };
+    count.clicks++;
+    count[click.count]++;
+    counts.set(key, count);
+
+    if (!click.record) continue;
+    records.push(click.record);
+    // The stand-in for hand review: the control the user aimed at is right, any other is wrong.
+    for (const candidate of click.record.features.candidates) {
+      if (candidate.kind !== 'control') continue;
+      reviews.push({
+        recordId: click.record.id,
+        candidate: candidate.id,
+        verdict: candidate.id === click.target ? 'right' : 'wrong',
+        t: click.record.t,
+      });
     }
   }
 

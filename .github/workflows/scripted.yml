@@ -1,0 +1,39 @@
+name: Scripted gates
+
+# Plays 24 weeks of scripted clicks through the built extension and judges the
+# plan's gates on the log. It takes a while, so it runs on main and on demand,
+# not on every pull request. A short scripted run is part of the e2e job.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'synth/**'
+      - 'scripted/**'
+      - 'scorer/**'
+      - 'e2e/fixtures/scripted.html'
+
+permissions:
+  contents: read
+
+jobs:
+  scripted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run scripted -- --out scripted-log.json
+      - run: npm run gates -- scripted-log.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: scripted-log
+          path: scripted-log.json

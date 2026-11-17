@@ -31,5 +31,6 @@ Each feature file starts with an H1 title and one paragraph on the user-visible 
 - [Shadow capture](./shadow-capture.md) covers logging near misses, follow-ups, page reactions, hits, click counts and the privacy rules.
 - [Review and numbers](./review.md) covers the review page, keyboard marks, the gate numbers, export and delete.
 - [Scorer](./scorer.md) covers scoring an exported log, the gates, the held-out split and the decision's isolation.
+- [Scripted run](./scripted-run.md) covers playing the generator's clicks through the real extension and judging the gates on that log.
 - [Agent loop](./agent-loop.md) covers the loop's workspace, keep-or-undo, the decision lint, the sandbox and the held-out judgment.
 - [Mac feasibility experiment](./mac-experiment.md) covers the Swift package's tests, its permission check and how to run the experiment.
