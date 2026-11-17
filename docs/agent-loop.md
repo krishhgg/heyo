@@ -34,7 +34,7 @@ The command exits 0 when the best decision passes both held-out gates.
 The workspace holds:
 
 - `decision/`, a copy of the decision module. This is the only thing the agent's edits affect.
-- `train.json`, the train split of the log, with its review marks.
+- `train.json`, the train split of the log, with its review marks. It holds no day counts, which would name the held-out sites and days.
 - `core/types.ts` and `core/geometry.ts`, read-only copies for reference. The scorer uses the repo's own.
 - `TASK.md`, the instructions.
 - `./score`, which scores `decision/` on the train split, and `./lint`, which checks it against the rules.
@@ -43,7 +43,7 @@ The workspace holds:
 ## What keeps the result honest
 
 - **The scorer is out of reach.** The agent runs under macOS `sandbox-exec`. Everything the runner runs code from is read-only to it: the repo, the packages the repo depends on (also when they sit outside the repo behind a link) and Node itself. The folder the runner writes worker code into before running it is closed to the agent for reads and writes. It can run the scorer but not change it.
-- **The held-out split never enters the workspace.** The sandbox denies reads of the log files and of the runner's own folder. The runner judges the held-out split once, after the last round, and prints the result for you. The agent is never told it.
+- **The held-out split never enters the workspace.** The sandbox closes the log files to reads and writes, and closes the runner's own folder and every other folder whose name ends in `.private`, so the result of an earlier run is as far out of reach as this one's. The runner judges the held-out split once, after the last round, and prints the result for you. The agent is never told it.
 - **The ceiling comes first.** A change is kept only if it is better, in this order: getting the verified wrong-target rate under the 1% ceiling, then a lower bound on that rate while above the ceiling, then higher recovery once under it. Anything else is undone before the next round.
 - **The lint rejects rules fitted to examples.** No hostnames, selectors, URLs or paths. Numbers have at most 3 significant digits. Strings are short lower-case keywords. No I/O, time or randomness, and no module-level variable that can be assigned again. The module stays under 400 lines. `npm run lint:decision` runs the same lint on `src/decision`, and CI runs it too.
 - **The decision cannot see labels.** The scorer runs it in a process that is sent click features and nothing else. See [scoring.md](scoring.md).

@@ -1,7 +1,16 @@
 // Runs the real loop command with scripted agents in place of a coding agent.
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -153,9 +162,13 @@ describe('running the agent', () => {
 });
 
 describe('the sandbox profile', () => {
-  it('closes private folders to reads and writes and code folders to writes', () => {
+  it('closes the logs and private folders to reads and writes, and code folders to writes', () => {
     const profile = sandboxProfile(['/logs/a.json'], ['/repo'], ['/run.private', '/tmp/cache']);
     expect(profile).toContain('(deny file-read* (literal "/logs/a.json"))');
+    expect(profile).toContain('(deny file-write* (literal "/logs/a.json"))');
+    // Any folder whose name ends in .private, so an earlier run's result is closed too.
+    expect(profile).toContain(String.raw`(deny file-read* (regex #"\.private(/|$)"))`);
+    expect(profile).toContain(String.raw`(deny file-write* (regex #"\.private(/|$)"))`);
     for (const path of ['/run.private', '/tmp/cache']) {
       expect(profile).toContain(`(deny file-read* (subpath "${path}"))`);
       expect(profile).toContain(`(deny file-write* (subpath "${path}"))`);
@@ -195,6 +208,9 @@ describe('the loop', () => {
     expect(train.records.length).toBeGreaterThan(100);
     expect(train.records.some((r) => heldOut.has(r.id))).toBe(false);
     expect(train.reviews.some((r) => heldOut.has(r.recordId))).toBe(false);
+    // The day counts would name the held-out sites and days.
+    expect(log.counts.length).toBeGreaterThan(0);
+    expect(train.counts).toEqual([]);
     for (const name of [
       'TASK.md',
       'score',
@@ -239,6 +255,21 @@ describe('the loop', () => {
     expect(await readFile(join(workspace, 'decision/index.ts'), 'utf8')).not.toContain('SITE');
   });
 
+  it('does not write through a link the agent left in place of the history', async () => {
+    const victim = join(dir, 'victim.txt');
+    await writeFile(victim, 'untouched');
+    const linker = await agent(
+      'linker',
+      `import { rmSync, symlinkSync } from 'node:fs';
+       rmSync('history.md');
+       symlinkSync(${JSON.stringify(victim)}, 'history.md');`,
+    );
+    const { workspace } = await loop('linker', linker, 2);
+    expect(await readFile(victim, 'utf8')).toBe('untouched');
+    expect((await lstat(join(workspace, 'history.md'))).isSymbolicLink()).toBe(false);
+    expect(await readFile(join(workspace, 'history.md'), 'utf8')).toMatch(/Round 2/);
+  });
+
   it('goes on when the agent removes the decision folder', async () => {
     const gone = await agent(
       'gone',
@@ -263,6 +294,11 @@ describe('the loop', () => {
        try { readFileSync(${JSON.stringify(logFile)}); tried.log = 'read'; } catch (error) { tried.log = error.code; }
        try { appendFileSync(${JSON.stringify(join(root, 'scorer/main.ts'))}, ''); tried.scorer = 'wrote'; } catch (error) { tried.scorer = error.code; }
        try { readFileSync(process.cwd() + '.private/best/index.ts'); tried.private = 'read'; } catch (error) { tried.private = error.code; }
+       // The result of an earlier run, in a folder of its own.
+       try { readFileSync(${JSON.stringify(join(dir, 'earlier.private/result.json'))}); tried.earlier = 'read'; } catch (error) { tried.earlier = error.code; }
+       // The log is the user's file. It may not be changed or removed either.
+       try { appendFileSync(${JSON.stringify(logFile)}, ''); tried.logWrite = 'wrote'; } catch (error) { tried.logWrite = error.code; }
+       try { rmSync(${JSON.stringify(logFile)}); tried.logRemove = 'removed'; } catch (error) { tried.logRemove = error.code; }
        // The packages the runner loads, which can sit outside the repo behind a link, and Node itself.
        try { appendFileSync(realpathSync(${JSON.stringify(join(root, 'node_modules/typescript/package.json'))}), ''); tried.packages = 'wrote'; } catch (error) { tried.packages = error.code; }
        try { appendFileSync(process.execPath, ''); tried.node = 'wrote'; } catch (error) { tried.node = error.code; }
@@ -277,12 +313,18 @@ describe('the loop', () => {
          .filter((code) => code === 'EPERM').length;
        writeFileSync('tried.json', JSON.stringify(tried));`,
     );
+    await mkdir(join(dir, 'earlier.private'), { recursive: true });
+    await writeFile(join(dir, 'earlier.private/result.json'), '{"heldOut":"a result"}');
     const { workspace } = await loop('snoop', snoop);
     const tried = JSON.parse(await readFile(join(workspace, 'tried.json'), 'utf8')) as object;
+    expect(existsSync(logFile)).toBe(true);
     expect(tried).toEqual({
       log: 'EPERM',
       scorer: 'EPERM',
       private: 'EPERM',
+      earlier: 'EPERM',
+      logWrite: 'EPERM',
+      logRemove: 'EPERM',
       packages: 'EPERM',
       node: 'EPERM',
       caches: 1,

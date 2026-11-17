@@ -159,6 +159,8 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - The scorer runs every decision over the clicks in two orders and refuses one whose answers differ. The lint also bans a module-level `let` or `var`, which gives the agent the reason early, but a lint cannot follow every way to keep state, and the two runs can.
 - The agent runs in its own process group, and the group is killed when a round's time is up and when the command returns. A tool the agent left running could otherwise edit the decision between the lint and the scoring.
 - `--apply` makes `src/decision` the same as the winner: source files the winner dropped are removed, and tests are left alone.
+- The runner never writes through what an agent left in the workspace. Each file of the runner's is removed and made again, so a link under its name leads nowhere. The history is kept by the runner and the agent gets a new copy each round.
+- The sandbox closes every folder whose name ends in `.private`, not only this run's, and closes the log files to writes as well as reads. The train file carries no day counts.
 - The lint is an AST check, not a text search. It limits numbers to 3 significant digits, strings to short lower-case keywords, and bans hostnames, selectors, URLs, paths, I/O, time and randomness. It also type-checks the decision against the repo's core, so reading a field the features do not hold is an error.
 - CI runs the lint on `src/decision`, so a hand edit is held to the same rules as the agent.
 - `--apply` copies the best decision into `src/decision` only when both held-out gates pass. A person still reads the diff before it ships.

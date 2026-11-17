@@ -2,7 +2,7 @@
 // hostnames, selectors and per-example constants, so a decision cannot be tuned
 // to one site, one element or one logged click. It also keeps the module a
 // small pure function.
-import { readdirSync, readFileSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import ts from 'typescript';
 
@@ -410,6 +410,12 @@ function typeCheck(files: string[], dir: string, coreDir: string, problems: Prob
 /** Lints the decision module in a folder. `coreDir` is the repo's src/core. */
 export function lintDecision(dir: string, coreDir: string): Problem[] {
   const problems: Problem[] = [];
+  // A folder that is a link could hold anything from anywhere.
+  if (lstatSync(dir).isSymbolicLink()) {
+    return [
+      { file: '', line: 1, message: 'The decision folder is a link. It has to be a folder.' },
+    ];
+  }
   const files = decisionFiles(dir);
   if (!files.includes(join(dir, 'index.ts'))) {
     return [{ file: 'index.ts', line: 1, message: 'The decision folder has no index.ts.' }];

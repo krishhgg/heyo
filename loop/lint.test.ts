@@ -196,6 +196,15 @@ describe('the decision lint', () => {
     }
   });
 
+  it('rejects a decision folder that is a link', () => {
+    const linked = join(scratch, `case-${next++}`);
+    mkdirSync(linked, { recursive: true });
+    symlinkSync(shipped, join(linked, 'decision'));
+    expect(lintDecision(join(linked, 'decision'), coreDir).map((p) => p.message)).toEqual([
+      'The decision folder is a link. It has to be a folder.',
+    ]);
+  });
+
   it('rejects a module-level variable that can be assigned again', () => {
     const counted = `${HEAD}let calls = 0;\nexport function decide(features: ClickFeatures): Decision {\n  calls += features.candidates.length;\n  ${refuse}\n}\n`;
     expect(lint(counted).join(' ')).toMatch(/module-level let or var/);

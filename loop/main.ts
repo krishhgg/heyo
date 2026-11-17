@@ -4,7 +4,7 @@
 // is better. The held-out split is judged once, at the end, and never enters
 // the workspace.
 import { spawn } from 'node:child_process';
-import { chmod, cp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, cp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { retargetGates, wrongTargetGate } from '../src/core/gates';
@@ -110,15 +110,23 @@ A rule that only fits the train log will fail there.
 }
 
 /**
- * A seatbelt profile for the agent. It hides the logs and the runner's own
- * folders, and it makes read-only everything the runner loads code from.
+ * A seatbelt profile for the agent. It closes the logs and the runner's own
+ * folders to reads and writes, and it makes read-only everything the runner
+ * loads code from.
  */
 export function sandboxProfile(hidden: string[], readOnly: string[], priv: string[]): string {
   const quote = (path: string) => `"${path.replace(/(["\\])/g, '\\$1')}"`;
+  // Every run keeps its held-out result in a folder whose name ends in
+  // .private. An earlier run's folder is as closed to the agent as this run's.
+  const anyPrivate = String.raw`(regex #"\.private(/|$)")`;
   return [
     '(version 1)',
     '(allow default)',
     ...hidden.map((path) => `(deny file-read* (literal ${quote(path)}))`),
+    // The log is the user's export. The agent may not change, move or remove it either.
+    ...hidden.map((path) => `(deny file-write* (literal ${quote(path)}))`),
+    `(deny file-read* ${anyPrivate})`,
+    `(deny file-write* ${anyPrivate})`,
     ...priv.map((path) => `(deny file-read* (subpath ${quote(path)}))`),
     ...priv.map((path) => `(deny file-write* (subpath ${quote(path)}))`),
     ...readOnly.map((path) => `(deny file-write* (subpath ${quote(path)}))`),
@@ -203,6 +211,17 @@ export function runAgent(
     child.on('close', (code) => void finish(code));
     child.on('error', () => void finish(127));
   });
+}
+
+/**
+ * Writes a file of the runner's into the workspace, in place of whatever is
+ * there. An agent can leave a link under any name, and a plain write would
+ * follow it out of the workspace. The old entry is removed, link or not, and
+ * the new file is created only if nothing is in its place.
+ */
+async function writeFresh(path: string, text: string): Promise<void> {
+  await rm(path, { recursive: true, force: true });
+  await writeFile(path, text, { flag: 'wx' });
 }
 
 /** Copies a decision module's source files, without tests, into an empty folder. */
@@ -324,37 +343,43 @@ export async function runLoop(options: RunOptions, tools: LoopTools): Promise<Lo
     ...log,
     records,
     reviews: log.reviews.filter((review) => ids.has(review.recordId)),
+    // The day counts name every site and day, the held-out ones too, and scoring does not use them.
+    counts: [],
   };
 
   const work = join(workspace, 'decision');
   await copyDecision(options.decision, work);
   await copyDecision(options.decision, best);
-  await mkdir(join(workspace, 'core'), { recursive: true });
+  // A workspace can be one an earlier agent worked in, so nothing in it is
+  // written through. Each entry of the runner's is removed and made again.
+  await rm(join(workspace, 'core'), { recursive: true, force: true });
+  await mkdir(join(workspace, 'core'));
   for (const name of ['types.ts', 'geometry.ts']) {
     const copy = join(workspace, 'core', name);
-    await rm(copy, { force: true });
     await cp(join(coreDir, name), copy);
     await chmod(copy, 0o444);
   }
-  await writeFile(join(workspace, 'train.json'), `${JSON.stringify(train)}\n`);
-  await writeFile(join(workspace, 'TASK.md'), task(options.rounds));
+  await writeFresh(join(workspace, 'train.json'), `${JSON.stringify(train)}\n`);
+  await writeFresh(join(workspace, 'TASK.md'), task(options.rounds));
   const node = JSON.stringify(process.execPath);
-  await writeFile(
+  await writeFresh(
     join(workspace, 'score'),
     `#!/bin/sh\nexec ${node} ${JSON.stringify(join(root, 'scorer/cli.mjs'))} score ${JSON.stringify(join(workspace, 'train.json'))} --decision ${JSON.stringify(work)} "$@"\n`,
   );
-  await writeFile(
+  await writeFresh(
     join(workspace, 'lint'),
     `#!/bin/sh\nexec ${node} ${JSON.stringify(join(root, 'loop/cli.mjs'))} lint ${JSON.stringify(work)}\n`,
   );
   await chmod(join(workspace, 'score'), 0o755);
   await chmod(join(workspace, 'lint'), 0o755);
 
-  const history = join(workspace, 'history.md');
+  // The runner keeps the history itself and writes the agent a new copy each
+  // time, so nothing the agent did to its copy is read back or written through.
+  let history = '# History\n\n';
   const note = async (line: string) => {
     console.log(line);
-    const before = await readFile(history, 'utf8').catch(() => '# History\n\n');
-    await writeFile(history, `${before}${line}\n`);
+    history += `${line}\n`;
+    await writeFresh(join(workspace, 'history.md'), history);
   };
 
   const standing = async (dir: string) =>
