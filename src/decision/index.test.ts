@@ -97,6 +97,9 @@ describe('decide', () => {
       'Make payment',
       'Close account',
       'Retweet',
+      // A button that reads as a state undoes it when clicked.
+      'Following',
+      'Subscribed',
     ]) {
       const candidates = [candidate(0, 3, { label })];
       expect(decide(features({ candidates })), label).toEqual(refuse('irreversible'));
