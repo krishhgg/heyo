@@ -10,6 +10,7 @@ import {
 import { addDays, dayOf } from '../../../core/days';
 import { missRate, type Score } from '../../../core/metrics';
 import type { Log } from '../../db';
+import { percentBeside } from './data';
 
 interface Props {
   log: Log;
@@ -172,7 +173,7 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
             />
             <Row
               name="Wrong-target rate, upper bound"
-              value={percent(wrong.upper, 2)}
+              value={percentBeside(wrong.upper, GATES.maxWrongRate)}
               needs={`under ${100 * GATES.maxWrongRate}%`}
               status={wrong.status}
             />

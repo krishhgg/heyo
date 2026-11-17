@@ -86,3 +86,17 @@ export function kindOf(candidate: Candidate): string {
 export function nameOf(candidate: Candidate): string {
   return candidate.label || `unnamed ${kindOf(candidate)}`;
 }
+
+/**
+ * A share to two decimals, or to as many as it takes to tell it from a limit
+ * it sits right beside. With 299 marks and none wrong the bound is 0.997%,
+ * which two decimals would show as the 1.00% it has to stay under.
+ */
+export function percentBeside(value: number | null, limit: number): string {
+  if (value === null) return 'none yet';
+  for (let digits = 2; digits < 6; digits++) {
+    const shown = (100 * value).toFixed(digits);
+    if (shown !== (100 * limit).toFixed(digits) || value === limit) return `${shown}%`;
+  }
+  return `${(100 * value).toFixed(6)}%`;
+}

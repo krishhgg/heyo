@@ -108,7 +108,11 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - The review never shows whether the user retried. The verified wrong-target rate has to be independent of the proxy label.
 - A review judges the control the bundled decision picks now, not the one logged at click time. After a decision update the page asks again about any click whose pick changed.
 - Keys are `Y` for right, `N` for wrong, `U` for not sure and `Z` to go back. The question is worded as yes or no so the keys match it.
-- Keys are ignored for about a quarter second while the verdict stamp shows, so a double tap cannot mark a click the reviewer has not seen.
+- Keys are ignored for about a quarter second while the verdict stamp shows, so a double tap cannot mark a click the reviewer has not seen. With reduced motion the stamp does not move, and the wait stays.
+- The review stays mounted while the numbers show, so its place and the way back to earlier marks survive a look at the numbers. Its keys do nothing meanwhile.
+- A mark that cannot be stored leaves the click on screen with a message, and the reviewer marks it again.
+- Between 640 and 880 px wide the drawing shrinks and stays beside the buttons. Below 640 px it sits above them at 42% of the window's height with the three buttons in a row, so a mark never needs scrolling.
+- The wrong-target bound is shown with as many decimals as it takes to tell it from the 1% limit. At 299 marks with none wrong it reads 0.997%.
 - The drawing shows 56 px on each side of the click at a fixed scale, so distances look the same from one click to the next.
 - The page uses one bundled typeface, Recursive (OFL). The extension makes no network calls, so the font ships inside it.
 - Preact renders the page. It is 4 KB and keeps the review state readable.

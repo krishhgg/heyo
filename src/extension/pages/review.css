@@ -434,6 +434,12 @@ kbd {
   opacity: 0.85;
 }
 
+.unsaved {
+  margin-top: 12px;
+  color: var(--pencil);
+  font-weight: 700;
+}
+
 .ghost {
   margin-top: 12px;
   padding: 6px 2px;
@@ -675,8 +681,9 @@ td.num {
     grid-row: 2;
   }
 
+  /* Still side by side, with a smaller drawing, so nothing needs scrolling. */
   .bench {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
     gap: 24px;
   }
 
@@ -710,6 +717,36 @@ td.num {
   td {
     padding: 0;
     border: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .bench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The drawing stays small enough that the buttons under it are on screen too. */
+  .plate-frame {
+    width: min(100%, 42vh);
+    margin-inline: auto;
+  }
+
+  /* The question and its buttons come right under the name, and the details after. */
+  .call {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .facts {
+    order: 1;
+  }
+
+  .verdicts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .call .ghost {
+    align-self: flex-start;
   }
 }
 

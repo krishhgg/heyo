@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { candidate, record } from '../../../core/testing';
 import type { Decide } from '../../../core/types';
-import { firesOf, kindOf, nameOf, reviewKey, verdictsOf } from './data';
+import { firesOf, kindOf, nameOf, percentBeside, reviewKey, verdictsOf } from './data';
 
 const pickFirst: Decide = (f) =>
   f.candidates[0]
@@ -60,5 +60,20 @@ describe('kindOf and nameOf', () => {
   it('falls back to the kind when a control has no label', () => {
     expect(nameOf(candidate(0, 1, { label: 'Save' }))).toBe('Save');
     expect(nameOf(candidate(0, 1, { label: '' }))).toBe('unnamed button');
+  });
+});
+
+describe('percentBeside', () => {
+  it('shows two decimals when the value is clear of the limit', () => {
+    expect(percentBeside(0.0058, 0.01)).toBe('0.58%');
+    expect(percentBeside(0.0153, 0.01)).toBe('1.53%');
+    expect(percentBeside(null, 0.01)).toBe('none yet');
+  });
+
+  it('adds decimals until a value right beside the limit can be told from it', () => {
+    // 299 marks with none wrong: the bound is just under the 1% it has to stay under.
+    expect(percentBeside(0.009969, 0.01)).toBe('0.997%');
+    expect(percentBeside(0.0100003, 0.01)).toBe('1.00003%');
+    expect(percentBeside(0.01, 0.01)).toBe('1.00%');
   });
 });

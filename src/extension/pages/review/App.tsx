@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { wrongTargetGate } from '../../../core/gates';
 import { score as scoreLog } from '../../../core/metrics';
-import type { Verdict } from '../../../core/types';
+import type { Review, Verdict } from '../../../core/types';
 import { decide } from '../../../decision';
 import { clearLog, putReview, readLog, type Log } from '../../db';
 import { decisionVersion } from '../../version';
@@ -50,8 +50,12 @@ export function App() {
   const onVerdict = async (fire: Fire, verdict: Verdict) => {
     const review = { recordId: fire.record.id, candidate: fire.picked.id, verdict, t: Date.now() };
     await putReview(review);
+    // The store keeps one mark per click and control, so a changed mark replaces the old one here too.
+    const same = (r: Review) => r.recordId === review.recordId && r.candidate === review.candidate;
     setLog((current) =>
-      current ? { ...current, reviews: [...current.reviews, review] } : current,
+      current
+        ? { ...current, reviews: [...current.reviews.filter((r) => !same(r)), review] }
+        : current,
     );
   };
 
@@ -83,14 +87,17 @@ export function App() {
           </button>
         </nav>
       </header>
-      {view === 'review' ? (
+      {/* The review stays mounted behind the numbers, so its place and its way back are kept. */}
+      <div hidden={view !== 'review'}>
         <ReviewView
+          active={view === 'review'}
           fires={fires}
           verdicts={verdicts}
           needed={wrongTargetGate(score).needed}
           onVerdict={onVerdict}
         />
-      ) : (
+      </div>
+      {view === 'numbers' && (
         <NumbersView log={log} score={score} onExport={onExport} onDelete={onDelete} />
       )}
     </main>

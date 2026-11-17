@@ -4,7 +4,10 @@ import type { Verdict } from '../../../core/types';
 import { kindOf, nameOf, reviewKey, type Fire } from './data';
 import { Plate } from './Plate';
 
-/** How long the verdict stamp shows before the next click comes up. */
+/**
+ * How long the verdict stamp shows before the next click comes up. Keys are
+ * ignored for that long, so a double tap cannot mark a click nobody has seen.
+ */
 const STAMP_MS = 240;
 
 const VERDICT_WORDS: Record<Verdict, string> = {
@@ -14,6 +17,8 @@ const VERDICT_WORDS: Record<Verdict, string> = {
 };
 
 interface Props {
+  /** False while another section is showing. Keys do nothing then. */
+  active: boolean;
   /** Every would-be fire, in review order. */
   fires: Fire[];
   verdicts: Map<string, Verdict>;
@@ -57,12 +62,15 @@ function ViewportMap({ fire }: { fire: Fire }) {
   );
 }
 
-export function ReviewView({ fires, verdicts, needed, onVerdict }: Props) {
+export function ReviewView({ active, fires, verdicts, needed, onVerdict }: Props) {
   const done = (key: string) => verdicts.has(key);
   const [at, setAt] = useState<string | null>(() => firstUnreviewed(fires, done));
   const [trail, setTrail] = useState<string[]>([]);
   const [stamp, setStamp] = useState<Verdict | null>(null);
+  /** True after a mark could not be stored. The click stays up to be marked again. */
+  const [unsaved, setUnsaved] = useState(false);
   const busy = useRef(false);
+  const frame = useRef<HTMLDivElement>(null);
 
   const index = fires.findIndex((f) => reviewKey(f) === at);
   const fire = index >= 0 ? fires[index] : undefined;
@@ -72,28 +80,37 @@ export function ReviewView({ fires, verdicts, needed, onVerdict }: Props) {
     if (!fire && !busy.current) setAt(firstUnreviewed(fires, done));
   }, [fires, verdicts]);
 
+  // In a small window the reviewer scrolls down to the buttons. The next drawing
+  // has to come back into view, or it would be marked unseen.
+  useEffect(() => {
+    frame.current?.scrollIntoView({ block: 'nearest' });
+  }, [at]);
+
   const mark = (verdict: Verdict) => {
-    if (!fire || busy.current) return;
+    if (!active || !fire || busy.current) return;
     busy.current = true;
     const key = reviewKey(fire);
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    setUnsaved(false);
     setStamp(verdict);
-    const saved = onVerdict(fire, verdict);
-    window.setTimeout(
-      () => {
-        void saved.then(() => {
+    // The wait is the guard against a double tap, so it stays when motion is reduced.
+    const shown = new Promise((resolve) => window.setTimeout(resolve, STAMP_MS));
+    void Promise.all([onVerdict(fire, verdict), shown])
+      .then(
+        () => {
           setTrail((t) => [...t.filter((k) => k !== key), key]);
           setAt(firstUnreviewed(fires, (k) => k === key || done(k), index));
-          setStamp(null);
-          busy.current = false;
-        });
-      },
-      reduced ? 0 : STAMP_MS,
-    );
+        },
+        // The mark was not stored, so the click stays where it is.
+        () => setUnsaved(true),
+      )
+      .finally(() => {
+        setStamp(null);
+        busy.current = false;
+      });
   };
 
   const back = () => {
-    if (busy.current) return;
+    if (!active || busy.current) return;
     const previous = trail.filter((k) => k !== at).at(-1);
     if (!previous) return;
     setTrail((t) => t.filter((k) => k !== previous));
@@ -187,7 +204,7 @@ export function ReviewView({ fires, verdicts, needed, onVerdict }: Props) {
   return (
     <section class="review">
       <div class="bench">
-        <div class="plate-frame">
+        <div class="plate-frame" ref={frame}>
           <Plate fire={fire} />
           {stamp && <div class={`stamp stamp-${stamp}`}>{VERDICT_WORDS[stamp]}</div>}
         </div>
@@ -242,6 +259,11 @@ export function ReviewView({ fires, verdicts, needed, onVerdict }: Props) {
               Not sure <kbd>U</kbd>
             </button>
           </div>
+          {unsaved && (
+            <p class="unsaved" role="alert">
+              That mark was not saved. Mark this click again.
+            </p>
+          )}
           <button
             class="ghost"
             onClick={back}

@@ -87,6 +87,91 @@ test.describe('the review page', () => {
     await expect(page.locator('.progress-text')).toContainText('0 wrong');
   });
 
+  test('keeps its place and its way back while the numbers are showing', async ({
+    page,
+    worker,
+    extensionId,
+  }) => {
+    await openReviewWithFires(page, worker, extensionId);
+    const first = await page.locator('.target').innerText();
+    await page.keyboard.press('n');
+    await expect(page.locator('.stamp')).toHaveCount(0);
+    const second = await page.locator('.target').innerText();
+
+    await page.getByRole('button', { name: 'Numbers' }).click();
+    // A key pressed on the numbers page marks nothing.
+    await page.keyboard.press('y');
+    await page.getByRole('button', { name: /Review/ }).click();
+    await expect(page.locator('.target')).toHaveText(second);
+    expect((await readLog(worker)).reviews).toHaveLength(1);
+
+    await page.keyboard.press('z');
+    await expect(page.locator('.target')).toHaveText(first);
+  });
+
+  test('counts a changed mark once, as the store does', async ({ page, worker, extensionId }) => {
+    await openReviewWithFires(page, worker, extensionId);
+    await page.keyboard.press('n');
+    await expect(page.locator('.stamp')).toHaveCount(0);
+    await page.keyboard.press('z');
+    await page.keyboard.press('y');
+    await expect(page.locator('.stamp')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Numbers' }).click();
+    await expect(page.locator('.log-size')).toContainText('1 review marks');
+    expect((await readLog(worker)).reviews).toHaveLength(1);
+  });
+
+  test('ignores a double tap, also with reduced motion', async ({ page, worker, extensionId }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openReviewWithFires(page, worker, extensionId);
+    await page.keyboard.press('y');
+    await page.keyboard.press('y', { delay: 20 });
+    await expect(page.locator('.stamp')).toHaveCount(0);
+    await expect(page.locator('.progress-text')).toContainText('1 of 299 reviewed');
+    expect((await readLog(worker)).reviews).toHaveLength(1);
+  });
+
+  test('keeps the click up when a mark cannot be stored', async ({ page, worker, extensionId }) => {
+    await openReviewWithFires(page, worker, extensionId);
+    const first = await page.locator('.target').innerText();
+    // The next write to the store fails once, as it does when the disk is full.
+    await page.evaluate(() => {
+      // The method is put back on the same prototype, so it keeps its receiver.
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function () {
+        IDBObjectStore.prototype.put = put;
+        throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      };
+    });
+    await page.keyboard.press('y');
+    await expect(page.getByRole('alert')).toHaveText(/not saved/);
+    await expect(page.locator('.stamp')).toHaveCount(0);
+    await expect(page.locator('.target')).toHaveText(first);
+    expect((await readLog(worker)).reviews).toHaveLength(0);
+
+    await page.keyboard.press('y');
+    await expect(page.locator('.target')).not.toHaveText(first);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    expect((await readLog(worker)).reviews).toHaveLength(1);
+  });
+
+  test('keeps the drawing and the buttons on screen in a small window', async ({
+    page,
+    worker,
+    extensionId,
+  }) => {
+    await page.setViewportSize({ width: 800, height: 800 });
+    await openReviewWithFires(page, worker, extensionId);
+    await expect(page.locator('.plate')).toBeInViewport({ ratio: 1 });
+    await expect(page.getByRole('button', { name: /No, wrong/ })).toBeInViewport({ ratio: 1 });
+
+    await page.getByRole('button', { name: /Yes, right/ }).click();
+    await expect(page.locator('.stamp')).toHaveCount(0);
+    await expect(page.locator('.plate')).toBeInViewport({ ratio: 1 });
+  });
+
   test('says so when there is nothing to review', async ({ page, extensionId }) => {
     await page.goto(`chrome-extension://${extensionId}/review.html`);
     await expect(page.getByRole('heading', { name: 'Nothing to review yet' })).toBeVisible();
