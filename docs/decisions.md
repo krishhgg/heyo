@@ -16,7 +16,7 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 
 ## Log schema and metrics
 
-- The log keeps candidates out to 30 px, although the decision only fires within 12 px. 30 px is the labeled-miss radius, and the agent loop can only test a rule on features the log holds.
+- The log keeps candidates out to 30 px, although the decision only fires within 7.5 px. 30 px is the labeled-miss radius, and the agent loop can only test a rule on features the log holds.
 - A candidate is either a control or an opaque region (canvas, video, iframe). Opaque regions are never targets. They are logged because the user may have aimed at something inside one, so the decision treats a near one as a competitor.
 - The decision sees `ClickFeatures` only. The record's site, time and id live outside it, so a rule cannot key on them.
 - The 30 px in the labeled-miss definition is measured from the first click point to the nearest edge of the control the follow-up click hit, not between the two click points. The user aimed at the control, so its edge is what the miss fell short of.
@@ -189,20 +189,25 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 
 ## Decision
 
-- The decision that ships is the first one tightened in three places. The runner-up has to be four times as far as the nearest control and at least 8 px farther. The cursor has to have moved at least 2 px in the 300 ms before the press.
-- The margin came from the agent loop. Its first round on a synthetic train split raised the margin from 2 to 4 and added the 8 px gap, which took the wrong fires on that split from 16 in 644 to 1 in 526. A ratio alone is not enough when the nearest control is a pixel or two away, because four times a small number is still small.
-- The cursor rule was added by hand. A miss comes at the end of an aimed movement. A click from a cursor that has been still for 300 ms is far more often meant for the spot it is on.
+- The decision that ships is the first one tightened. The runner-up has to be four times as far as the nearest control and at least 8 px farther. The nearest control has to be within 7.5 px. The cursor has to have been at least 2 px from the click point in the 300 ms before the press. A page that was changing just before the press is refused, and so is a name long enough to have been cut.
+- The margin came from the agent loop. Its first round on a synthetic train split raised the margin from 2 to 4 and added the 8 px gap, which took the wrong fires on that split from 16 in 644 to 1 in 526. The gap does most of that work. With the gap and no ratio the scripted logs still pass, with a few more wrong fires. Without the gap they fail.
+- The log holds candidates out to 30 px and nothing past it. A margin of four can be checked only when four times the nearest distance is within 30 px, so the decision fires only within 7.5 px. At 12 px, the first guess, a rival 31 px away would break the margin and not be in the log.
+- The cursor rule is an extra refusal, not what brings the wrong fires under the ceiling. Both gates pass on all six logs without it, with 5 to 6 points more recovery and up to three more wrong fires a log. It stays because refusing is the safe side for a default. Its numbers here come from two of the generator's guesses: that 40% of deliberate clicks are made from a cursor at rest, and that an aiming hand rests about 110 ms before it presses. A person who pauses 300 ms before every press gets nothing recovered under this rule, and the real log will show what it costs.
+- The rule asks how far the cursor was from the click point, not how far it traveled. A hand at rest jitters a pixel back and forth, and that travel adds up.
+- A page whose DOM changed in the 300 ms before the press is refused. The layout may have moved under the cursor, so the nearest control may not be the one the user aimed at. On the six logs this changes nothing, because every such click there also drew a reaction.
+- A name of 40 characters may have been cut by the capture, and a word like delete may sit past the cut. It is refused, like a name with a blanked part.
 - The decision is judged on the held-out split of six 24-week logs: three seeds of the synthetic generator, and the same three played through the real extension. Both gates pass on all six.
 
 | Log       | Seed | Recovery, held-out | Wrong in reviewed fires | Upper bound |
 | --------- | ---- | ------------------ | ----------------------- | ----------- |
-| Synthetic | 1    | 61.5% of 1,884     | 4 in 1,337              | 0.68%       |
-| Synthetic | 2    | 56.5% of 1,957     | 1 in 1,288              | 0.37%       |
-| Synthetic | 3    | 58.7% of 1,894     | 2 in 1,309              | 0.48%       |
-| Scripted  | 1    | 59.3% of 2,199     | 4 in 1,513              | 0.60%       |
-| Scripted  | 2    | 55.7% of 2,250     | 3 in 1,476              | 0.52%       |
-| Scripted  | 3    | 58.1% of 2,111     | 4 in 1,463              | 0.62%       |
+| Synthetic | 1    | 58.9% of 1,884     | 4 in 1,274              | 0.72%       |
+| Synthetic | 2    | 53.6% of 1,957     | 1 in 1,219              | 0.39%       |
+| Synthetic | 3    | 56.2% of 1,894     | 2 in 1,250              | 0.50%       |
+| Scripted  | 1    | 56.8% of 2,199     | 4 in 1,439              | 0.63%       |
+| Scripted  | 2    | 52.9% of 2,250     | 3 in 1,393              | 0.56%       |
+| Scripted  | 3    | 55.3% of 2,111     | 2 in 1,385              | 0.45%       |
 
-- These numbers come from the generator after its two fixes, whole-pixel presses and corrections that head for the target. Before them the same decision read 50.7%, 47.9% and 46.9% on the scripted logs, because a sixth of the simulated misses had the cursor leaving the target, which the decision refuses on purpose.
+- These numbers come from the generator after its two fixes, whole-pixel presses and corrections that head for the target.
 - What the gates on these logs show is that the decision, the capture and the scorer hold together. The wrong-target numbers follow from a guessed share of deliberate clicks beside a control. Whether the decision is right for a real person is what the two weeks of shadow mode and the hand review are for.
-- The refusals that cost the most recovery are the margin, at about a fifth of misses, and the cursor rules. One measured alternative scores each candidate by its distance in units of the control's own size, and asks that every other candidate be far less likely. On the three scripted logs it recovers about 3 points more with as few wrong fires. It is left for the loop to weigh on a real log, where it can be tested against how people miss.
+- The word list for irreversible names matches whole English words. "Retweet" and "Payment" pass it, and it has no entry for "Connect" or "Apply". It is a first list, and the hand review is where its gaps show.
+- One measured alternative scores each candidate by its distance in units of the control's own size, and asks that every other candidate be far less likely. On the three scripted logs it recovered about 3 points more with as few wrong fires, before the 7.5 px limit. It is left for the loop to weigh on a real log, where it can be tested against how people miss.

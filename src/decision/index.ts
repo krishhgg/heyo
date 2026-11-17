@@ -1,13 +1,27 @@
 // The decision. A pure function from the logged features of one empty-space
 // click to a target or a refusal. The agent loop edits this module and nothing else.
 import { distanceToRect } from '../core/geometry';
-import type { Candidate, ClickFeatures, Decision, PathSample, RefuseReason } from '../core/types';
+import {
+  LABEL_MAX,
+  type Candidate,
+  type ClickFeatures,
+  type Decision,
+  type PathSample,
+  type RefuseReason,
+} from '../core/types';
 
-/** The nearest control must be within this many px. */
-const MAX_DIST = 12;
+/** The log holds the candidates within this many px of the click. Past it the decision sees nothing. */
+const SEEN_PX = 30;
 
 /** The runner-up must be at least this many times as far as the nearest control. */
 const MARGIN = 4;
+
+/**
+ * The nearest control must be within this many px. Farther than that, a rival
+ * close enough to break the margin could sit past what the log holds, so the
+ * margin could not be checked.
+ */
+const MAX_DIST = SEEN_PX / MARGIN;
 
 /** The runner-up must also be at least this many px farther than the nearest control. */
 const MIN_GAP = 8;
@@ -24,8 +38,8 @@ const LONG_PRESS_MS = 500;
 /** The cursor moved away when it ended this many px farther from the control than it started. */
 const AWAY_PX = 2;
 
-/** A miss comes at the end of a movement. The cursor must have traveled this many px in the logged path. */
-const MIN_TRAVEL = 2;
+/** A miss comes at the end of a movement. The cursor must have been this many px from the click point in the logged path. */
+const MIN_REACH = 2;
 
 /** Labels that suggest a click the user cannot take back. */
 const IRREVERSIBLE = [
@@ -93,9 +107,17 @@ function refuse(reason: RefuseReason): Decision {
   return { action: 'refuse', reason };
 }
 
-/** A label with a blanked part cannot be checked, so it counts as irreversible. */
+/**
+ * A label that cannot be read whole cannot be checked, so it counts as
+ * irreversible: one with a blanked part, or one long enough to have been cut,
+ * where the word that matters may be past the cut.
+ */
 function looksIrreversible(candidate: Candidate): boolean {
-  return candidate.redacted || IRREVERSIBLE_PATTERN.test(candidate.label);
+  return (
+    candidate.redacted ||
+    candidate.label.length >= LABEL_MAX ||
+    IRREVERSIBLE_PATTERN.test(candidate.label)
+  );
 }
 
 function inside(sample: PathSample, candidate: Candidate): boolean {
@@ -116,19 +138,22 @@ function movedAway(path: PathSample[], candidate: Candidate): boolean {
   return !overshot;
 }
 
-/** How far the cursor traveled over the logged path, in px. */
-function travel(path: PathSample[]): number {
-  let total = 0;
-  for (let i = 1; i < path.length; i++) {
-    const a = path[i - 1];
-    const b = path[i];
-    if (a && b) total += Math.hypot(b.x - a.x, b.y - a.y);
-  }
-  return total;
+/**
+ * The farthest the cursor was from the click point over the logged path, in
+ * px. Distance covered would not do: a hand at rest jitters a pixel back and
+ * forth, and that adds up.
+ */
+function reach(path: PathSample[]): number {
+  let far = 0;
+  for (const sample of path) far = Math.max(far, Math.hypot(sample.x, sample.y));
+  return far;
 }
 
 export function decide(features: ClickFeatures): Decision {
   if (features.reacted) return refuse('reacted');
+  // The page was changing just before the press. What is nearest now may have
+  // moved under the cursor, and not be what the user aimed at.
+  if (features.churn === true) return refuse('churn');
   if (!features.focused) return refuse('unfocused');
   if (features.press.move > DRAG_PX) return refuse('drag');
   if (features.press.ms > LONG_PRESS_MS) return refuse('long-press');
@@ -152,7 +177,7 @@ export function decide(features: ClickFeatures): Decision {
   if (nearest.label === '') return refuse('unlabeled');
   if (looksIrreversible(nearest)) return refuse('irreversible');
   // A click from a cursor at rest is not the end of an aimed movement.
-  if (travel(features.path) < MIN_TRAVEL) return refuse('path');
+  if (reach(features.path) < MIN_REACH) return refuse('path');
   if (movedAway(features.path, nearest)) return refuse('path');
 
   return { action: 'retarget', candidate: nearest.id };

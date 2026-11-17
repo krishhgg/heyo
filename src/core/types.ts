@@ -121,6 +121,7 @@ export interface ClickFeatures {
 
 export type RefuseReason =
   | 'reacted'
+  | 'churn'
   | 'unfocused'
   | 'drag'
   | 'long-press'
