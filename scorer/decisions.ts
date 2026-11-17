@@ -28,7 +28,8 @@ export function reachesNetwork(flags: string[]): Promise<boolean> {
       const probe = `const s = require('node:net').connect(${port}, '127.0.0.1');
         s.on('connect', () => process.exit(7));
         s.on('error', () => process.exit(0));`;
-      const child = spawn(process.execPath, [...flags, '-e', probe], { stdio: 'ignore' });
+      // The same empty environment the decision gets, so the check sees what it will see.
+      const child = spawn(process.execPath, [...flags, '-e', probe], { stdio: 'ignore', env: {} });
       child.on('error', reject);
       child.on('close', (code) => {
         server.close();
@@ -61,7 +62,7 @@ function assertNetworkLocked(): Promise<void> {
 /**
  * Runs the bundled worker over every click's features and returns one decision
  * per click, in order. The child process gets Node's permission system with
- * read access to its own bundle and nothing else.
+ * read access to its own bundle and nothing else, and an empty environment.
  */
 export async function decideAll(workerBundle: string, all: ClickFeatures[]): Promise<Decision[]> {
   await assertNetworkLocked();
@@ -69,7 +70,9 @@ export async function decideAll(workerBundle: string, all: ClickFeatures[]): Pro
     const child = spawn(
       process.execPath,
       ['--permission', `--allow-fs-read=${workerBundle}`, workerBundle],
-      { stdio: ['pipe', 'pipe', 'pipe'] },
+      // An empty environment. The permission system does not hide the caller's
+      // variables, and a decision could hand one back as its reason.
+      { stdio: ['pipe', 'pipe', 'pipe'], env: {} },
     );
     const timer = setTimeout(() => {
       child.kill('SIGKILL');

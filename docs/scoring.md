@@ -40,7 +40,7 @@ A record is held out when its site is one of a fixed quarter of the sites, or wh
 
 ## What the decision can see
 
-The scorer runs the decision in a separate process with Node's permission system on. That process can read its own code and nothing else. It has no network and cannot start other processes. It is sent each click's features and returns a decision. It is never sent a site, a time, a record id, a follow-up or a review mark, so a decision cannot key on any of them.
+The scorer runs the decision in a separate process with Node's permission system on. That process can read its own code and nothing else. It has no network, cannot start other processes, and gets an empty environment, so it sees none of the caller's variables. It is sent each click's features and returns a decision. It is never sent a site, a time, a record id, a follow-up or a review mark, so a decision cannot key on any of them.
 
 A decision may import only its own `.ts` files and the repo's `src/core`. The scorer refuses to bundle anything else: a log file, a Node module, a file outside the decision's folder or a link that points out of it. Bundling happens before the locked-down process starts, so an import of a log would otherwise carry its review marks into the decision.
 

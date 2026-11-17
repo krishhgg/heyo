@@ -14,6 +14,14 @@ describe('generate', () => {
     expect(generate({ ...small, seed: 2 }).records).not.toEqual(log.records);
   });
 
+  it('gives no record the id of a record made with other settings', () => {
+    // Two such logs can be scored together, and a shared id would drop one click for the other.
+    const ids = new Set(log.records.map((r) => r.id));
+    const other = generate({ ...small, sites: small.sites + 1 });
+    expect(other.records.length).toBeGreaterThan(0);
+    expect(other.records.filter((r) => ids.has(r.id))).toEqual([]);
+  });
+
   it('counts every simulated click once', () => {
     const clicks = log.counts.reduce((sum, c) => sum + c.clicks, 0);
     expect(clicks).toBe(small.days * small.clicksPerDay);

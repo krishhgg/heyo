@@ -176,6 +176,20 @@ describe('a decision under the scorer', () => {
     expect(Object.keys(answers)).toEqual(['refuse: ERR_ACCESS_DENIED ERR_ACCESS_DENIED']);
   });
 
+  it("cannot read the caller's environment", async () => {
+    const folder = await decisionDir(
+      'env',
+      `export const decide = () => ({ action: 'refuse', reason: process.env.HEYO_TEST_SECRET ?? 'unset' });`,
+    );
+    process.env.HEYO_TEST_SECRET = 'a-secret';
+    const { code, stdout } = await scorer('score', logFile, '--decision', folder, '--json');
+    delete process.env.HEYO_TEST_SECRET;
+    expect(code).toBe(0);
+    expect(stdout).not.toContain('a-secret');
+    const { answers } = JSON.parse(stdout) as { answers: Record<string, number> };
+    expect(Object.keys(answers)).toEqual(['refuse: unset']);
+  });
+
   it('cannot import the log, a Node module or a file outside its folder', async () => {
     // The bundler runs outside the locked-down process, so an import would be read there.
     const imports = [

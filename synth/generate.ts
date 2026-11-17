@@ -542,8 +542,21 @@ function emptyPoint(rng: Random, scene: Control[], clearance: number): Point {
   return p;
 }
 
+/**
+ * A short name for one set of options. It goes into every record id, so two
+ * logs made with different settings never share an id, and merging them keeps
+ * every click with its own marks.
+ */
+function corpusOf(options: SynthOptions): string {
+  const text = JSON.stringify(Object.entries(options).sort(([a], [b]) => (a < b ? -1 : 1)));
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
 export function generate(options: SynthOptions = DEFAULT_OPTIONS): LogExport {
   const rng = new Random(options.seed);
+  const corpus = corpusOf(options);
   const sites = makeSites(rng, options.sites);
   const weights = sites.map((s) => s.weight);
   const records: ClickRecord[] = [];
@@ -585,7 +598,7 @@ export function generate(options: SynthOptions = DEFAULT_OPTIONS): LogExport {
     };
     const record: ClickRecord = {
       v: 1,
-      id: `synth-${options.seed}-${nextId++}`,
+      id: `synth-${corpus}-${nextId++}`,
       t,
       site: site.name,
       features,
