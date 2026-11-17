@@ -7,7 +7,10 @@ import type { Candidate, ClickFeatures, Decision, PathSample, RefuseReason } fro
 const MAX_DIST = 12;
 
 /** The runner-up must be at least this many times as far as the nearest control. */
-const MARGIN = 2;
+const MARGIN = 4;
+
+/** The runner-up must also be at least this many px farther than the nearest control. */
+const MIN_GAP = 8;
 
 /** Floor for the margin test, so two controls a hair apart stay ambiguous. */
 const MIN_DIST = 1;
@@ -20,6 +23,9 @@ const LONG_PRESS_MS = 500;
 
 /** The cursor moved away when it ended this many px farther from the control than it started. */
 const AWAY_PX = 2;
+
+/** A miss comes at the end of a movement. The cursor must have traveled this many px in the logged path. */
+const MIN_TRAVEL = 2;
 
 /** Labels that suggest a click the user cannot take back. */
 const IRREVERSIBLE = [
@@ -110,6 +116,17 @@ function movedAway(path: PathSample[], candidate: Candidate): boolean {
   return !overshot;
 }
 
+/** How far the cursor traveled over the logged path, in px. */
+function travel(path: PathSample[]): number {
+  let total = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1];
+    const b = path[i];
+    if (a && b) total += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  return total;
+}
+
 export function decide(features: ClickFeatures): Decision {
   if (features.reacted) return refuse('reacted');
   if (!features.focused) return refuse('unfocused');
@@ -123,13 +140,19 @@ export function decide(features: ClickFeatures): Decision {
   // An opaque region competes for the click but can never be the target.
   if (nearest.kind === 'opaque') return refuse('ambiguous');
   const runnerUp = byDist[1];
-  if (runnerUp && runnerUp.dist < MARGIN * Math.max(nearest.dist, MIN_DIST)) {
+  if (
+    runnerUp &&
+    (runnerUp.dist < MARGIN * Math.max(nearest.dist, MIN_DIST) ||
+      runnerUp.dist - nearest.dist < MIN_GAP)
+  ) {
     return refuse('ambiguous');
   }
   if (nearest.disabled) return refuse('disabled');
   // A control with no name cannot be checked for what it does, and a reviewer cannot judge it.
   if (nearest.label === '') return refuse('unlabeled');
   if (looksIrreversible(nearest)) return refuse('irreversible');
+  // A click from a cursor at rest is not the end of an aimed movement.
+  if (travel(features.path) < MIN_TRAVEL) return refuse('path');
   if (movedAway(features.path, nearest)) return refuse('path');
 
   return { action: 'retarget', candidate: nearest.id };

@@ -1,5 +1,5 @@
 // Builders for records in unit tests. Each takes only the fields a test cares about.
-import type { Candidate, ClickFeatures, ClickRecord, FollowUp } from './types';
+import type { Candidate, ClickFeatures, ClickRecord, FollowUp, PathSample } from './types';
 
 /** A 80 by 30 px button whose left edge is `dist` px to the right of the click point. */
 export function candidate(id: number, dist: number, overrides: Partial<Candidate> = {}): Candidate {
@@ -19,10 +19,17 @@ export function candidate(id: number, dist: number, overrides: Partial<Candidate
   };
 }
 
+/** A cursor that came in from the lower left and stopped at the click point 100 ms before the press. */
+const ARRIVING: PathSample[] = [-120, -70, -30, -8, 0].map((x, i) => ({
+  t: -300 + i * 50,
+  x,
+  y: -x / 2,
+}));
+
 export function features(overrides: Partial<ClickFeatures> = {}): ClickFeatures {
   return {
     candidates: [],
-    path: [],
+    path: ARRIVING,
     press: { ms: 80, move: 0 },
     focused: true,
     reacted: false,

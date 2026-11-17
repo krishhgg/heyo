@@ -19,10 +19,17 @@ describe('decide', () => {
     expect(decide(features({ candidates: [candidate(0, 12.5)] }))).toEqual(refuse('too-far'));
   });
 
-  it('refuses when the runner-up is less than twice as far', () => {
-    const close = [candidate(0, 4), candidate(1, 7.9)];
+  it('refuses when the runner-up is less than four times as far', () => {
+    const close = [candidate(0, 4), candidate(1, 15.9)];
     expect(decide(features({ candidates: close }))).toEqual(refuse('ambiguous'));
-    const clear = [candidate(0, 4), candidate(1, 8)];
+    const clear = [candidate(0, 4), candidate(1, 16)];
+    expect(decide(features({ candidates: clear }))).toEqual(retarget(0));
+  });
+
+  it('refuses when the runner-up is less than 8 px farther', () => {
+    const close = [candidate(0, 1), candidate(1, 8.9)];
+    expect(decide(features({ candidates: close }))).toEqual(refuse('ambiguous'));
+    const clear = [candidate(0, 1), candidate(1, 9)];
     expect(decide(features({ candidates: clear }))).toEqual(retarget(0));
   });
 
@@ -98,9 +105,11 @@ describe('decide', () => {
       ).toEqual(retarget(0));
     });
 
-    it('fires when the cursor was at rest', () => {
-      expect(decide(features({ candidates, path: [] }))).toEqual(retarget(0));
-      expect(decide(features({ candidates, path: path(0, 0) }))).toEqual(retarget(0));
+    it('refuses when the cursor was at rest, since a miss ends a movement', () => {
+      expect(decide(features({ candidates, path: [] }))).toEqual(refuse('path'));
+      expect(decide(features({ candidates, path: path(0, 0) }))).toEqual(refuse('path'));
+      expect(decide(features({ candidates, path: path(-1.5, 0) }))).toEqual(refuse('path'));
+      expect(decide(features({ candidates, path: path(-2, 0) }))).toEqual(retarget(0));
     });
 
     it('refuses when the cursor moved away from the control', () => {
