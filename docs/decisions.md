@@ -29,3 +29,23 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - A double press is a second press within 500 ms and 5 px of the first.
 - The first decision treats labels with social actions (like, follow, vote) as irreversible along with delete, pay and send. They notify other people and cannot be taken back. The word list is English only.
 - The first decision uses the cursor path only to refuse. It refuses when the cursor started nearer the control than it ended, unless it came from elsewhere and crossed the control, which is an overshoot.
+
+## Shadow capture
+
+- A press is classified where it lands, at `pointerdown`, not at `click`. The press point is what the user aimed at, and the same classification serves the first click and the follow-up.
+- Candidates are collected at the press too, before the page can handle anything.
+- A focus change is a reaction only when focus moves into an element or out of a text field. Chrome takes focus off the last-clicked button or link on any click outside a control. Counting that would hide most real misses, because most clicks follow a click on a button or link. The log keeps the fact as `blurred`. This narrows the plan, and the plan now says so.
+- A selection change is a reaction only when the visible selection changes. Chrome moves an invisible caret on the first click outside a field, and that fires `selectionchange`. The plan now says so.
+- Ring sampling uses the topmost element at each point (`elementFromPoint`), not every element under it. A click at that point would reach only the topmost one.
+- A click listener marks an element as clickable only when the element is not the page root, wraps no other control, and covers under half the viewport. A listener that fails those tests is event delegation.
+- A pointer cursor is inherited, so a run of nested elements that all show it is one control, named by the outermost.
+- The main-world script wraps `addEventListener` in a Proxy. The function keeps its name and length and still prints as native code, but a script that compares the printed text with a real native function can tell. heyo does not try to hide further.
+- The content script asks the main-world script about listeners with a DOM event whose name is random per page load, handed over before any page script runs. A page cannot use the query to detect the extension.
+- A removed click listener is not forgotten. The error goes toward calling a click a real hit, which is the safe side.
+- A scrollbar is counted as a real hit.
+- `site` is the hostname of the top-level page, also for clicks inside iframes, read from `location.ancestorOrigins`.
+- A follow-up press is matched only within the same frame.
+- Clicks with a modifier key are not counted at all. The plan covers plain left clicks only.
+- Records live in IndexedDB under the extension's origin. The service worker writes one message at a time so a follow-up cannot land before its record.
+- The extension asks for no permissions. It needs only its content scripts.
+- Labels never include a field's value or text inside an editable region. A password field is always logged as "password field".

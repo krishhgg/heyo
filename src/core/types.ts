@@ -40,8 +40,11 @@ export interface PathSample {
 
 /** What the page did between the press and about 50 ms after the click. */
 export interface Reaction {
+  /** The DOM changed. */
   mutation: boolean;
+  /** Focus moved into an element, or out of a field the user can type in. */
   focus: boolean;
+  /** The visible text selection changed. */
   selection: boolean;
   scroll: boolean;
   navigation: boolean;
@@ -71,6 +74,12 @@ export interface ClickFeatures {
   /** True when any field of reaction is true. */
   reacted: boolean;
   reaction: Reaction;
+  /**
+   * The click took focus off a control that is not a text field, such as the
+   * button the user clicked before. Chrome does this on any click outside a
+   * control, so it does not count as a reaction.
+   */
+  blurred: boolean;
   under: Under;
   /** The click point in viewport coordinates. */
   point: Point;

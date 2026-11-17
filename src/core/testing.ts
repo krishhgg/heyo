@@ -26,6 +26,7 @@ export function features(overrides: Partial<ClickFeatures> = {}): ClickFeatures 
     focused: true,
     reacted: false,
     reaction: { mutation: false, focus: false, selection: false, scroll: false, navigation: false },
+    blurred: false,
     under: { tag: 'div', role: null, label: '' },
     point: { x: 400, y: 300 },
     viewport: { w: 1280, h: 800 },

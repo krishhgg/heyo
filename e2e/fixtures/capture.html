@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: capture</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      /* Every block is absolutely placed so tests can aim by coordinates. */
+      .at {
+        position: absolute;
+      }
+      button,
+      .pointer,
+      .listener {
+        width: 80px;
+        height: 32px;
+        box-sizing: border-box;
+      }
+      input {
+        height: 32px;
+        box-sizing: border-box;
+      }
+      .pointer {
+        cursor: pointer;
+        background: #dde;
+      }
+      .listener {
+        background: #ded;
+      }
+      canvas {
+        width: 80px;
+        height: 32px;
+        background: #edd;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Row 1: two buttons far apart. -->
+    <button id="save" class="at" style="left: 100px; top: 100px">Save</button>
+    <button id="share" class="at" style="left: 300px; top: 100px">Share</button>
+
+    <!-- Row 2: two buttons 6 px apart. -->
+    <button id="bold" class="at" style="left: 100px; top: 200px">Bold</button>
+    <button id="italic" class="at" style="left: 186px; top: 200px">Italic</button>
+
+    <!-- Row 3: plain text, a link, and an image. -->
+    <p id="text" class="at" style="left: 100px; top: 300px; margin: 0; width: 200px">
+      Plain paragraph text.
+    </p>
+    <a id="link" class="at" style="left: 400px; top: 300px" href="#linked">A link</a>
+
+    <!-- Row 4: a pointer-cursor div with a child, a div with a click listener, a disabled button, a canvas. -->
+    <div id="pointer" class="at pointer" style="left: 100px; top: 400px"><span>Card</span></div>
+    <div id="listener" class="at listener" style="left: 300px; top: 400px">Listens</div>
+    <button id="disabled" class="at" style="left: 500px; top: 400px" disabled>Disabled</button>
+    <canvas id="canvas" class="at" style="left: 700px; top: 400px"></canvas>
+
+    <!-- Row 5: fields. -->
+    <input id="password" class="at" style="left: 100px; top: 500px; width: 160px" type="password" />
+    <input
+      id="email"
+      class="at"
+      style="left: 400px; top: 500px; width: 160px"
+      type="text"
+      placeholder="Email address"
+    />
+
+    <!-- Row 6: irreversible and shadow DOM. -->
+    <button id="delete" class="at" style="left: 100px; top: 600px">Delete</button>
+    <div id="host" class="at" style="left: 300px; top: 600px"></div>
+
+    <script>
+      document.getElementById('listener').addEventListener('click', () => {});
+      const shadow = document.getElementById('host').attachShadow({ mode: 'open' });
+      shadow.innerHTML =
+        '<button id="inner" style="width: 80px; height: 32px; box-sizing: border-box">Inner</button>';
+    </script>
+  </body>
+</html>

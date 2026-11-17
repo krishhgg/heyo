@@ -23,9 +23,9 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
-    // Drives pass functions to worker.evaluate, which run inside the extension.
+    // Drives pass functions to worker.evaluate and page.evaluate, which run in the browser.
     files: ['.claude/skills/verify-heyo/scripts/**/*.mjs'],
-    languageOptions: { globals: { chrome: 'readonly', heyo: 'readonly' } },
+    languageOptions: { globals: { ...globals.browser, chrome: 'readonly', heyo: 'readonly' } },
   },
   prettier,
 );

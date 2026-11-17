@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: delegated handlers</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      #root {
+        position: absolute;
+        inset: 0;
+      }
+      .item {
+        position: absolute;
+        width: 80px;
+        height: 32px;
+        cursor: pointer;
+        background: #dde;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- One listener on the root handles every click, the way React does. -->
+    <div id="root">
+      <div class="item" data-action="open" style="left: 100px; top: 100px">Open</div>
+      <div class="item" data-action="close" style="left: 300px; top: 100px">Close</div>
+      <output id="log" style="position: absolute; left: 100px; top: 300px"></output>
+    </div>
+    <script>
+      const clicks = [];
+      document.getElementById('root').addEventListener('click', (event) => {
+        const action = event.target.closest('[data-action]')?.dataset.action;
+        if (action) {
+          clicks.push(action);
+          document.getElementById('log').textContent = clicks.join(',');
+        }
+      });
+    </script>
+  </body>
+</html>

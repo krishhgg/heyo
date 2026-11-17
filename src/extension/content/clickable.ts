@@ -1,0 +1,146 @@
+// Decides whether an element looks clickable, and finds the clickable element
+// a click on a given node would reach.
+import type { ClickSignal } from '../../core/types';
+
+/** Elements whose content heyo cannot see into. A click on one is a real hit. */
+const OPAQUE_TAGS = new Set(['canvas', 'video', 'iframe', 'embed', 'object', 'audio']);
+
+const NATIVE_TAGS = new Set(['button', 'select', 'textarea', 'summary', 'option']);
+
+/** ARIA widget roles that a click activates. */
+const CLICKABLE_ROLES = new Set([
+  'button',
+  'link',
+  'checkbox',
+  'radio',
+  'switch',
+  'tab',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'option',
+  'combobox',
+  'textbox',
+  'searchbox',
+  'slider',
+  'spinbutton',
+  'treeitem',
+]);
+
+/** Matches any descendant that is clickable without a listener or cursor signal. */
+const INTERACTIVE_SELECTOR = [
+  'a[href]',
+  'button',
+  'input:not([type="hidden"])',
+  'select',
+  'textarea',
+  'summary',
+  '[contenteditable]:not([contenteditable="false"])',
+  ...[...CLICKABLE_ROLES].map((role) => `[role~="${role}"]`),
+].join(',');
+
+/** A listener on an element that covers this share of the viewport is treated as delegation. */
+const DELEGATE_VIEWPORT_SHARE = 0.5;
+
+export type ElementKind = 'control' | 'opaque';
+
+export interface Clickable {
+  element: Element;
+  kind: ElementKind;
+  signals: ClickSignal[];
+}
+
+/** Asks whether the page registered a click-type listener on a node. */
+export type HasListener = (node: EventTarget) => boolean;
+
+export function tagOf(element: Element): string {
+  return element.localName;
+}
+
+export function roleOf(element: Element): string | null {
+  const role = element.getAttribute('role')?.trim().split(/\s+/)[0]?.toLowerCase();
+  return role ? role : null;
+}
+
+function isEditable(element: Element): boolean {
+  return element instanceof HTMLElement && element.isContentEditable;
+}
+
+function isNative(element: Element): boolean {
+  const tag = tagOf(element);
+  if (NATIVE_TAGS.has(tag)) return true;
+  if (tag === 'a' || tag === 'area') return element.hasAttribute('href');
+  if (tag === 'input') return (element as HTMLInputElement).type !== 'hidden';
+  if (tag === 'label') return (element as HTMLLabelElement).control !== null;
+  return isEditable(element);
+}
+
+function hasTabStop(element: Element): boolean {
+  const value = element.getAttribute('tabindex');
+  return value !== null && Number.parseInt(value, 10) >= 0;
+}
+
+function hasPointerCursor(element: Element): boolean {
+  return getComputedStyle(element).cursor === 'pointer';
+}
+
+/**
+ * A click listener marks an element as clickable only when the element is the
+ * thing being clicked. A listener on the page root or on a wrapper around other
+ * controls is event delegation, and React puts every handler on its root.
+ */
+function isOwnListener(element: Element, hasListener: HasListener): boolean {
+  if (element === document.documentElement || element === document.body) return false;
+  if (!hasListener(element)) return false;
+  if (element.querySelector(INTERACTIVE_SELECTOR)) return false;
+  const rect = element.getBoundingClientRect();
+  const viewport = window.innerWidth * window.innerHeight;
+  return rect.width * rect.height < viewport * DELEGATE_VIEWPORT_SHARE;
+}
+
+/** The parent in the flat tree, which crosses out of a shadow root to its host. */
+export function parentOf(element: Element): Element | null {
+  if (element.parentElement) return element.parentElement;
+  const root = element.getRootNode();
+  return root instanceof ShadowRoot ? root.host : null;
+}
+
+/** The signals an element shows on its own, leaving out the inherited pointer cursor. */
+function ownSignals(element: Element, hasListener: HasListener): ClickSignal[] {
+  const signals: ClickSignal[] = [];
+  if (isNative(element)) signals.push('native');
+  const role = roleOf(element);
+  if (role && CLICKABLE_ROLES.has(role)) signals.push('role');
+  if (hasTabStop(element)) signals.push('tabindex');
+  if (isOwnListener(element, hasListener)) signals.push('listener');
+  return signals;
+}
+
+/**
+ * The clickable element a click on `start` would reach, or null if the click
+ * would land on nothing clickable. A pointer cursor is inherited, so a run of
+ * ancestors that all show it counts as one control, named by the outermost.
+ */
+export function closestClickable(start: Element, hasListener: HasListener): Clickable | null {
+  for (let node: Element | null = start; node; node = parentOf(node)) {
+    if (OPAQUE_TAGS.has(tagOf(node))) return { element: node, kind: 'opaque', signals: [] };
+    const signals = ownSignals(node, hasListener);
+    const pointer = hasPointerCursor(node);
+    if (signals.length > 0) {
+      if (pointer) signals.push('cursor');
+      return { element: node, kind: 'control', signals };
+    }
+    if (pointer) {
+      const parent = parentOf(node);
+      if (!parent || !hasPointerCursor(parent)) {
+        return { element: node, kind: 'control', signals: ['cursor'] };
+      }
+    }
+  }
+  return null;
+}
+
+export function isDisabled(element: Element): boolean {
+  if (element.matches(':disabled')) return true;
+  return element.closest('[aria-disabled="true"]') !== null;
+}
