@@ -175,7 +175,8 @@ export function RetargetView({ log, score, settings, request }: Props) {
               <th scope="row">Changed nothing heyo could see</th>
               <td class="num">
                 {score.sentIgnored.toLocaleString()}
-                {ignoredShare !== null && ` (${percent(ignoredShare)})`}
+                {/* A no-break space keeps the count and its share on one line. */}
+                {ignoredShare !== null && `\u00a0(${percent(ignoredShare)})`}
               </td>
               <td>
                 runs high, since a click that worked without changing the page counts too. If a site
