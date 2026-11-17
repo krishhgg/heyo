@@ -569,6 +569,7 @@ export function generate(options: SynthOptions = DEFAULT_OPTIONS): LogExport {
       reacted: didReact,
       reaction: draft.reaction,
       blurred: rng.chance(0.45),
+      leftField: false,
       mutations: { total: draft.reaction.mutation ? 1 : 0, near: 0 },
       churn: site.churn,
       under: {
