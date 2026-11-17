@@ -28,5 +28,6 @@ Every gate result so far is on generated clicks. The synthetic and scripted logs
 
 1. **Load the extension in your own Chrome and use it for two weeks.** `npm ci && npm run install:chrome`, then the three steps it prints. Mark the fires on the Review tab as they come.
 2. **Accessibility permission for the Mac experiment.** In System Settings, Privacy & Security, Accessibility, turn on the terminal app you run it from. Then `cd mac && swift run -c release heyo-feasibility all --out ../docs/mac-feasibility-result`. It takes a few minutes and moves the pointer while it runs. [mac-feasibility.md](mac-feasibility.md) says how to read the result.
-3. **A Chrome Web Store developer account**, which has a one-time fee. Upload `dist/heyo-extension-<version>.zip` and paste the fields from [store/listing.md](../store/listing.md). Start it as Unlisted.
-4. **An Apple Developer ID certificate**, only if the Mac experiment says go and a Mac app gets built. Nothing needs it today.
+3. **A Chrome Web Store developer account**, which has a one-time fee. Run `npm run package`, upload `dist/heyo-extension-<version>.zip` and paste the fields from [store/listing.md](../store/listing.md). Start it as Unlisted.
+4. **A release, when you want one.** `git tag v0.1.0 && git push origin v0.1.0` publishes the zip on GitHub, for installing without Node.
+5. **An Apple Developer ID certificate**, only if the Mac experiment says go and a Mac app gets built. Nothing needs it today.

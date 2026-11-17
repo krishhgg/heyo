@@ -23,7 +23,7 @@ That builds the extension, brings Chrome to the front and puts the folder's path
 2. Turn on Developer mode, top right.
 3. Click Load unpacked, press Cmd+Shift+G, paste, press Enter, then Select.
 
-Without Node, download `heyo-extension-<version>.zip` from the [latest release](https://github.com/krishhgg/heyo/releases/latest), unzip it, and pick that folder in step 3.
+Without Node, download `heyo-extension-<version>.zip` from the [latest release](https://github.com/krishhgg/heyo/releases/latest), unzip it, and pick that folder in step 3. No release is published yet. Pushing a version tag, such as `v0.1.0`, builds the zip and publishes one.
 
 To update, pull, run `npm run install:chrome` again, and click the reload arrow on heyo's card.
 
