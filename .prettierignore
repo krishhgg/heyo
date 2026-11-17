@@ -1,0 +1,8 @@
+dist/
+node_modules/
+playwright-report/
+test-results/
+.verify/
+package-lock.json
+docs/plan.md
+mac/
