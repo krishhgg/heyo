@@ -69,6 +69,17 @@
       ><input id="locked-box" type="checkbox" disabled /> Locked</label
     >
 
+    <!-- Row 6: the read-only input a dropdown library keeps focus in after a pick. -->
+    <input
+      id="picked"
+      class="at"
+      style="left: 100px; top: 640px; width: 120px; height: 32px; box-sizing: border-box"
+      readonly
+      value="Weekly"
+      aria-label="Schedule"
+    />
+    <button id="keep" class="at" style="left: 300px; top: 640px">Keep</button>
+
     <script>
       const answer = document.getElementById('answer');
       answer.addEventListener('input', () => {

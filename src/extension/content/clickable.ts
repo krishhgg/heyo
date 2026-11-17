@@ -81,7 +81,8 @@ function hasTabStop(element: Element): boolean {
   return value !== null && Number.parseInt(value, 10) >= 0;
 }
 
-function isScrollRegion(element: Element): boolean {
+/** True for a box that scrolls its content, which is the only kind of box with scrollbars. */
+export function isScrollRegion(element: Element): boolean {
   const { overflowX, overflowY } = getComputedStyle(element);
   return [overflowX, overflowY].some((value) => value === 'auto' || value === 'scroll');
 }
@@ -182,6 +183,20 @@ export function closestClickable(start: Element, hasListener: HasListener): Clic
     }
   }
   return null;
+}
+
+/**
+ * True when an element is clickable by what it shows itself. It is only right
+ * for an element whose ancestors are known not to be controls. None of them
+ * shows a pointer cursor then, so a pointer cursor here starts here, and there
+ * is no need to walk up to the root again.
+ */
+export function isClickableItself(element: Element, hasListener: HasListener): boolean {
+  return (
+    OPAQUE_TAGS.has(tagOf(element)) ||
+    hasPointerCursor(element) ||
+    ownSignals(element, hasListener).length > 0
+  );
 }
 
 /** True for a control a click cannot activate. A label is disabled when its control is. */

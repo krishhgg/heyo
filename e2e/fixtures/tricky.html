@@ -162,6 +162,10 @@ const a = 1;</pre>
           16,
         );
       }
+      // ?rewriter writes an attribute back with the value it already has, 50 times a second.
+      if (params.has('rewriter')) {
+        setInterval(() => document.getElementById('ticker').setAttribute('data-n', '0'), 20);
+      }
     </script>
   </body>
 </html>

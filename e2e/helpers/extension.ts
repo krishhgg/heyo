@@ -16,7 +16,7 @@ export interface ExtensionSession {
 
 export async function launchWithExtension(
   userDataDir: string,
-  options: { headless?: boolean; recordVideoDir?: string } = {},
+  options: { headless?: boolean; recordVideoDir?: string; scrollbars?: boolean } = {},
 ): Promise<ExtensionSession> {
   if (!existsSync(`${extensionDir}/manifest.json`)) {
     throw new Error('dist/extension is missing. Run `npm run build` first.');
@@ -27,6 +27,8 @@ export async function launchWithExtension(
     headless: options.headless ?? true,
     viewport: { width: 1280, height: 800 },
     recordVideo: options.recordVideoDir ? { dir: options.recordVideoDir } : undefined,
+    // Playwright hides every scrollbar in headless mode. A test of a press on one needs them.
+    ignoreDefaultArgs: options.scrollbars ? ['--hide-scrollbars'] : undefined,
     args: [
       `--disable-extensions-except=${extensionDir}`,
       `--load-extension=${extensionDir}`,

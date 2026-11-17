@@ -218,8 +218,9 @@ const IDLE_MS = 1000;
  * or streaming text, would otherwise make every click look reacted to.
  */
 export class BackgroundWatch {
-  private readonly observer = new MutationObserver(() => {
-    this.lastChange = performance.now();
+  // A write that leaves an attribute as it was changes nothing, however often it runs.
+  private readonly observer = new MutationObserver((records) => {
+    if (!records.every(isUnchanged)) this.lastChange = performance.now();
   });
   private watchingSince: number | null = null;
   private lastChange = -Infinity;
@@ -255,7 +256,7 @@ export class BackgroundWatch {
    * was seen but the watch had not been running for that whole time.
    */
   changedBefore(now: number, windowMs: number): boolean | null {
-    if (this.observer.takeRecords().length > 0) this.lastChange = now;
+    if (!this.observer.takeRecords().every(isUnchanged)) this.lastChange = now;
     if (this.lastChange >= now - windowMs) return true;
     const watchedAll = this.watchingSince !== null && this.watchingSince <= now - windowMs;
     return watchedAll ? false : null;

@@ -12,10 +12,14 @@ interface ExtensionFixtures {
 }
 
 /** Each test gets a fresh browser profile with the built extension loaded. */
-export const test = base.extend<ExtensionFixtures & { session: ExtensionFixtures }>({
-  session: async ({ headless }, use) => {
+export const test = base.extend<
+  ExtensionFixtures & { session: ExtensionFixtures; scrollbars: boolean }
+>({
+  // Set with test.use({ scrollbars: true }) to draw scrollbars that take up room.
+  scrollbars: [false, { option: true }],
+  session: async ({ headless, scrollbars }, use) => {
     const userDataDir = await mkdtemp(join(tmpdir(), 'heyo-e2e-'));
-    const session = await launchWithExtension(userDataDir, { headless });
+    const session = await launchWithExtension(userDataDir, { headless, scrollbars });
     await use(session);
     await session.context.close();
     await rm(userDataDir, { recursive: true, force: true });

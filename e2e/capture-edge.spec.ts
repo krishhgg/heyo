@@ -1,6 +1,7 @@
 // Pages that are easy to log wrongly: web components, focus-trapping dialogs,
 // pages that change on their own, plain HTTP origins, and pages that echo what
 // the user typed.
+import type { Page } from '@playwright/test';
 import { expect, test } from './helpers/fixtures';
 import { clickAt, readLog, recordOf } from './helpers/log';
 
@@ -226,6 +227,15 @@ test.describe('forms', () => {
     const record = await recordOf(page, worker, 336, 548); // 4 px right of the icon button
     expect(record.features.candidates[0]).toMatchObject({ tag: 'button', label: 'Next page' });
     expect(record.decision).toEqual({ action: 'retarget', candidate: 0 });
+  });
+
+  test('clicking away from a read-only input is not leaving a field', async ({ page, worker }) => {
+    // Dropdown libraries keep focus in a read-only input after a pick.
+    await page.locator('#picked').focus();
+
+    const record = await recordOf(page, worker, 296, 656); // 4 px left of Keep
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Keep', dist: 4 });
+    expect(record.features).toMatchObject({ reacted: false, leftField: false, blurred: true });
   });
 
   test('a label around a disabled checkbox is disabled', async ({ page, worker }) => {
@@ -571,6 +581,15 @@ test.describe('a page that changes on its own', () => {
     expect(record.features).toMatchObject({ reacted: false, churn: false });
   });
 
+  test('writing an attribute back unchanged is not the page changing', async ({ page, worker }) => {
+    await page.goto('/tricky.html?rewriter');
+    await page.mouse.move(60, 420);
+    await page.waitForTimeout(400);
+
+    const record = await recordOf(page, worker, 184, 376);
+    expect(record.features).toMatchObject({ reacted: false, churn: false });
+  });
+
   test('is unknown when heyo had not watched for the whole 300 ms', async ({ page, worker }) => {
     await page.goto('/tricky.html');
     const record = await recordOf(page, worker, 184, 376);
@@ -749,4 +768,95 @@ test.describe('a page that pokes at the extension', () => {
     expect(await page.evaluate('probe.clicks')).toBe(1);
     expect((await readLog(worker)).counts[0]).toMatchObject({ clicks: 1, hits: 1 });
   });
+});
+
+test.describe('inline boxes', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/boxes.html');
+  });
+
+  test('a gap between blocks inside an inline component is empty space', async ({
+    page,
+    worker,
+  }) => {
+    // A custom element is an inline box by default, and it has no scrollbar.
+    const button = await page.locator('#in-card').boundingBox();
+    const record = await recordOf(page, worker, button!.x + 10, button!.y - 12);
+    expect(record.features.under.tag).toBe('app-panel');
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Open', dist: 12 });
+  });
+
+  test('the padding of an inline chip is empty space', async ({ page, worker }) => {
+    const chip = await page.locator('#chip').boundingBox();
+    const record = await recordOf(page, worker, chip!.x + chip!.width - 4, chip!.y + 4);
+    expect(record.features.under.tag).toBe('span');
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Publish' });
+  });
+});
+
+test.describe('scrollbars', () => {
+  test.use({ scrollbars: true });
+
+  test("a press on a box's scrollbar is not an empty-space click", async ({ page, worker }) => {
+    await page.goto('/boxes.html');
+    const box = await page.locator('#scroller').boundingBox();
+    expect(await page.locator('#scroller').evaluate((e) => e.clientWidth)).toBe(184);
+
+    // On the scrollbar, 14 px from the Next button beside the box.
+    await clickAt(page, box!.x + box!.width - 8, box!.y + 60);
+    // Chrome sends no click for a press on a scrollbar, so nothing is counted either.
+    expect(await readLog(worker)).toMatchObject({ records: [], counts: [] });
+
+    // The same distance from the button, but inside the box, is an empty-space click.
+    await clickAt(page, box!.x + box!.width - 24, box!.y + 60);
+    const log = await readLog(worker);
+    expect(log.records).toHaveLength(1);
+    expect(log.records[0]!.features.candidates[0]).toMatchObject({ label: 'Next' });
+  });
+
+  test("a press on the window's scrollbar is not an empty-space click", async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/boxes.html');
+    await page.addStyleTag({
+      content: 'html::-webkit-scrollbar { width: 16px } body { height: 3000px }',
+    });
+    const width = await page.evaluate(() => document.documentElement.clientWidth);
+    expect(width).toBe(1264);
+
+    await clickAt(page, width + 10, 300);
+    expect(await readLog(worker)).toMatchObject({ records: [], counts: [] });
+  });
+});
+
+test.describe('a long highlighted code block', () => {
+  /** The median time from a press to the page's own handler, over a few presses. */
+  async function pressDelay(page: Page, x: number, y: number): Promise<number> {
+    await page.evaluate('delays.length = 0');
+    for (let i = 0; i < 5; i++) await clickAt(page, x, y);
+    const delays = await page.evaluate<number[]>('delays');
+    return delays.sort((a, b) => a - b)[2]!;
+  }
+
+  for (const style of ['tokens', 'code']) {
+    const where = style === 'tokens' ? 'between token spans' : 'inside a code element';
+    test(`text ${where} is found, and quickly`, async ({ page, worker }) => {
+      await page.goto(`/code.html?style=${style}&lines=400`);
+      const block = await page.locator('#block').boundingBox();
+      const copy = await page.locator('#copy').boundingBox();
+      // A press on a button is the least heyo does. It sets this machine's pace.
+      const pace = await pressDelay(page, copy!.x + 20, copy!.y + 10);
+      // On the words of line 100, with 700 nodes of the block before them.
+      await page.evaluate(() => window.scrollTo(0, 1600));
+      const delay = await pressDelay(page, block!.x + 60, block!.y + 20 * 100 + 10 - 1600);
+
+      const log = await readLog(worker);
+      expect(log.records).toEqual([]);
+      expect(log.counts[0]).toMatchObject({ clicks: 10, hits: 10 });
+      // About 3 ms on a machine where the button press takes 0.5 ms. Walking up
+      // from every token to the page root took 15 ms and then gave up.
+      expect(delay).toBeLessThan(5 + 20 * pace);
+    });
+  }
 });

@@ -1,20 +1,20 @@
 // Classifies where a press landed: on a control, on an opaque region, on text,
 // or on empty space.
 import type { HitKind } from '../../core/types';
-import { closestClickable, type Clickable, type HasListener } from './clickable';
+import {
+  closestClickable,
+  isClickableItself,
+  isScrollRegion,
+  type Clickable,
+  type HasListener,
+} from './clickable';
 import { flatChildren } from './dom';
 
-/** How deep into inline children the text test looks, and how many text nodes it reads. */
+/** How deep into inline children the text test looks. */
 const INLINE_DEPTH = 4;
-const MAX_TEXT_NODES = 500;
 
-/** True when `child`, or something between it and `ancestor`, is a control. */
-function isControlWithin(child: Element, ancestor: Element, hasListener: HasListener): boolean {
-  const clickable = closestClickable(child, hasListener);
-  return (
-    clickable !== null && clickable.element !== ancestor && !clickable.element.contains(ancestor)
-  );
-}
+/** How many text nodes and inline children the text test measures before it gives up. */
+const MAX_MEASURED = 1200;
 
 /**
  * True when the point is on a line of the target's text. A click on text is
@@ -36,8 +36,23 @@ export function isOverText(
   hasListener: HasListener,
 ): boolean {
   const lineHeight = Number.parseFloat(getComputedStyle(target).lineHeight);
+  // How far outside an inline child's box the text in it can still reach the point.
+  const reach = Number.isFinite(lineHeight) ? lineHeight : 0;
   const range = document.createRange();
-  let read = 0;
+  let measured = 0;
+
+  // A child whose box is nowhere near the point holds no line under it. In a
+  // highlighted code block that rules out every token on the other lines with
+  // one measurement each.
+  const isNear = (child: Element): boolean => {
+    const box = child.getBoundingClientRect();
+    return (
+      x >= box.left - reach &&
+      x <= box.right + reach &&
+      y >= box.top - reach &&
+      y <= box.bottom + reach
+    );
+  };
 
   const onLine = (node: Node): boolean => {
     range.selectNodeContents(node);
@@ -50,21 +65,24 @@ export function isOverText(
     return false;
   };
 
-  // Each text node is tested as the walk reaches it, and the walk stops at a limit,
+  // Each node is tested as the walk reaches it, and the walk stops at a limit,
   // so a block with thousands of runs cannot hold up the page's own handlers.
   const walk = (element: Element, depth: number): boolean => {
     for (const child of flatChildren(element)) {
-      if (read >= MAX_TEXT_NODES) return false;
+      if (measured >= MAX_MEASURED) return false;
       if (child.nodeType === Node.TEXT_NODE) {
-        read++;
+        measured++;
         if (onLine(child)) return true;
       } else if (!(child instanceof Element) || depth === 0) {
         continue;
       } else if (child instanceof HTMLSlotElement) {
         if (walk(child, depth)) return true;
       } else if (
+        (measured++, isNear(child)) &&
         getComputedStyle(child).display === 'inline' &&
-        !isControlWithin(child, element, hasListener)
+        // The target is not inside a control, or this test would not run, and
+        // the walk only goes down through children that are not controls.
+        !isClickableItself(child, hasListener)
       ) {
         if (walk(child, depth - 1)) return true;
       }
@@ -77,6 +95,11 @@ export function isOverText(
 /** True when the point is on an element's own scrollbar. */
 function isOnScrollbar(target: Element, x: number, y: number): boolean {
   if (!(target instanceof HTMLElement)) return false;
+  // Only a box that scrolls has scrollbars. An inline box has no client size at
+  // all, so the arithmetic below would take its whole width for a scrollbar.
+  if (!isScrollRegion(target) || (target.clientWidth === 0 && target.clientHeight === 0)) {
+    return false;
+  }
   const rect = target.getBoundingClientRect();
   const right = rect.left + target.clientLeft + target.clientWidth;
   const bottom = rect.top + target.clientTop + target.clientHeight;

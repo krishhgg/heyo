@@ -46,9 +46,12 @@ export function isEditableRegion(element: unknown): element is HTMLElement {
 /**
  * True for a field the user types in. A native or custom dropdown is not one.
  * It commits its value when the user picks, so clicking away commits nothing.
+ * A read-only input is not one either. The user cannot type in it, and
+ * dropdown libraries keep focus in one after a pick.
  */
 export function isTextField(element: unknown): boolean {
-  return isTextInput(element) || isEditableRegion(element);
+  if (isTextInput(element)) return !element.readOnly;
+  return isEditableRegion(element);
 }
 
 /** The focused element, looking inside shadow roots, open or closed. */
