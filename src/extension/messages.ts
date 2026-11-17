@@ -1,5 +1,5 @@
 // Messages between the service worker and content scripts.
-import type { ClickRecord, Fire, FollowUp } from '../core/types';
+import type { ClickRecord, Fire, FollowUp, Review } from '../core/types';
 import type { Settings } from './settings';
 
 /** The service worker asks a frame whether its content script is running. */
@@ -44,14 +44,20 @@ export interface FireMessage {
 
 export type WorkerMessage = CountMessage | RecordMessage | FollowUpMessage | FireMessage;
 
-/** Requests from the review page. Only the service worker changes settings. */
+/**
+ * Requests from the review page. Only the service worker changes the settings
+ * and the log, so it can turn retargeting off the moment the log stops passing
+ * the gates.
+ */
 export type PageRequest =
   | { type: 'setMode'; mode: Settings['mode'] }
   | { type: 'setWaitForDoubleClick'; value: boolean }
-  | { type: 'reportWrong'; recordId: string; irreversible: boolean };
+  | { type: 'reportWrong'; recordId: string; irreversible: boolean }
+  | { type: 'review'; review: Review }
+  | { type: 'clearLog' };
 
 export interface PageReply {
-  /** False when the request was refused, such as turning retargeting on before the gates pass. */
+  /** False when the request was refused or failed, such as turning retargeting on before the gates pass. */
   ok: boolean;
   settings: Settings;
 }

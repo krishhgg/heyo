@@ -1,5 +1,5 @@
 // The local log, in IndexedDB under the extension's own origin. The service
-// worker writes it. The extension's pages read it and add reviews.
+// worker writes it. The extension's pages read it.
 import { dayOf } from '../core/days';
 import type { ClickRecord, DayCount, Fire, FollowUp, Review } from '../core/types';
 

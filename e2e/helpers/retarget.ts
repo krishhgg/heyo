@@ -7,16 +7,20 @@ export const SENT_MS = 600;
 
 /**
  * A log that passes both gates in front of retargeting: 320 labeled misses the
- * decision recovers, each reviewed right.
+ * decision recovers, each reviewed right. `unmarked` adds fires that are still
+ * waiting for a mark on the Review tab.
  */
-export function passingLog(size = 320): Pick<LogExport, 'records' | 'reviews' | 'counts'> {
-  const records: ClickRecord[] = Array.from({ length: size }, () =>
+export function passingLog(
+  size = 320,
+  unmarked = 0,
+): Pick<LogExport, 'records' | 'reviews' | 'counts'> {
+  const records: ClickRecord[] = Array.from({ length: size + unmarked }, () =>
     record({ candidates: [candidate(0, 3)] }, hit(0, 3), {
       site: 'seeded.example',
       decision: { action: 'retarget', candidate: 0 },
     }),
   );
-  const reviews: Review[] = records.map((r) => ({
+  const reviews: Review[] = records.slice(0, size).map((r) => ({
     recordId: r.id,
     candidate: 0,
     verdict: 'right',
@@ -26,21 +30,21 @@ export function passingLog(size = 320): Pick<LogExport, 'records' | 'reviews' | 
 }
 
 /**
- * Seeds a passing log, allows the fixture host, and turns retargeting on.
- * Every fire is sent unless `held` says to hold them all back as controls.
+ * Seeds a passing log, lets retargeting act on the fixture host, and turns it
+ * on. Every fire is sent unless `held` says to hold them all back as controls.
  */
 export async function turnOnRetargeting(
   worker: Worker,
-  { hosts = ['127.0.0.1'], held = false, reviewed = 320 } = {},
+  { hosts = ['127.0.0.1'], held = false, reviewed = 320, unmarked = 0 } = {},
 ) {
   const reply = await worker.evaluate(
     async ({ log, allow, share }) => {
       await heyo.importLog(log);
-      await heyo.setAllowlist(allow);
-      await heyo.setHeldShare(share);
+      await heyo.allowTestHosts(allow);
+      await heyo.holdTestShare(share);
       return heyo.setMode('retarget');
     },
-    { log: passingLog(reviewed), allow: hosts, share: held ? 1 : 0 },
+    { log: passingLog(reviewed, unmarked), allow: hosts, share: held ? 1 : 0 },
   );
   if (!reply.ok) throw new Error('The seeded log did not pass the gates.');
 }

@@ -159,16 +159,39 @@ test.describe('a near miss with retargeting on', () => {
 
   test('sends nothing when the user is already clicking again', async ({ page, worker }) => {
     await arrive(page, 184, 116);
-    await page.mouse.down();
-    await page.mouse.up();
-    await page.mouse.click(140, 116); // the retry, on the button itself
+    // Sent without waiting for each answer, so the retry lands inside the first
+    // click's 50 ms settle time.
+    await Promise.all([
+      page.mouse.down(),
+      page.mouse.up(),
+      page.mouse.click(140, 116), // the retry, on the button itself
+    ]);
     await page.waitForTimeout(SENT_MS);
 
     const [record] = await fixtureRecords(worker);
-    // The retry has to land within the first click's 50 ms settle time for this case.
-    test.skip(record!.fire?.outcome === 'sent', 'the retry came after the settle time on this run');
     expect(record!.fire).toEqual({ outcome: 'failed', failure: 'second-press' });
     expect(await actionsOf(page)).toEqual(['plain']);
+  });
+
+  test('sends nothing more when the control removes itself as it is pressed', async ({
+    page,
+    worker,
+  }) => {
+    // A real press on this control gets no click either.
+    const { actions, fire } = await nearMiss(page, worker, 384, 416);
+    expect(actions).toEqual(['vanished']);
+    expect(fire).toEqual(sent);
+  });
+
+  test('sends nothing when the control has another name by then', async ({ page, worker }) => {
+    // The page renames the control at the user's click, where heyo's watch does not see it.
+    await page.goto('/replay.html?rename');
+    const { actions, fire } = await nearMiss(page, worker, 184, 416);
+    expect(
+      await page.evaluate(() => document.querySelector('#renamer')!.shadowRoot!.textContent),
+    ).toBe('Delete all');
+    expect(actions).toEqual([]);
+    expect(fire).toEqual({ outcome: 'failed', failure: 'renamed' });
   });
 
   test('marks the toolbar button for a moment after sending a click on', async ({
@@ -177,8 +200,17 @@ test.describe('a near miss with retargeting on', () => {
   }) => {
     const { fire } = await nearMiss(page, worker, 184, 116);
     expect(fire?.outcome).toBe('sent');
-    expect(await worker.evaluate(() => chrome.action.getBadgeText({}))).toBe('→');
-    await expect.poll(() => worker.evaluate(() => chrome.action.getBadgeText({}))).toBe('');
+    // The mark is on the tab that got the click, and on no other.
+    const badge = () =>
+      worker.evaluate(async () => {
+        const [tab] = await chrome.tabs.query({ active: true });
+        return [
+          await chrome.action.getBadgeText({ tabId: tab!.id }),
+          await chrome.action.getBadgeText({}),
+        ];
+      });
+    expect(await badge()).toEqual(['→', '']);
+    await expect.poll(badge).toEqual(['', '']);
   });
 });
 
@@ -227,12 +259,89 @@ test.describe('waiting out the double-click interval', () => {
     expect(records[0]!.fire).toEqual({ outcome: 'failed', failure: 'second-press' });
   });
 
-  test('sends nothing when the control moved in the meantime', async ({ page, worker }) => {
-    await clickAt(page, 984, 316); // 4 px right of Mover, which jumps away 200 ms later
-    await page.waitForTimeout(1200);
+  /** A miss that is logged and now waits to be sent on. */
+  async function waitingMiss(
+    page: import('@playwright/test').Page,
+    worker: import('@playwright/test').Worker,
+    x: number,
+    y: number,
+  ) {
+    await arrive(page, x, y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect.poll(async () => (await fixtureRecords(worker)).length).toBe(1);
+  }
+
+  /** What became of that miss, once the interval is over. */
+  async function outcome(
+    page: import('@playwright/test').Page,
+    worker: import('@playwright/test').Worker,
+  ) {
+    await page.waitForTimeout(1100);
     const [record] = await fixtureRecords(worker);
-    expect(await actionsOf(page)).toEqual([]);
-    expect(record!.fire).toEqual({ outcome: 'failed', failure: 'moved' });
+    return { actions: await actionsOf(page), fire: record!.fire };
+  }
+
+  for (const change of ['move', 'shrink']) {
+    test(`sends nothing when the control had to ${change} in the meantime`, async ({
+      page,
+      worker,
+    }) => {
+      await page.goto(`/replay.html?${change}`);
+      await waitingMiss(page, worker, 984, 316); // 4 px right of Mover
+      // Pointing at the zone moves Mover away, or halves its width, by a style rule alone.
+      await page.mouse.move(940, 496);
+      expect(await outcome(page, worker)).toEqual({
+        actions: [],
+        fire: { outcome: 'failed', failure: 'moved' },
+      });
+    });
+  }
+
+  test('sends nothing when the page handles the click late', async ({ page, worker }) => {
+    await page.goto('/replay.html?late');
+    await waitingMiss(page, worker, 184, 116);
+    expect(await outcome(page, worker)).toEqual({
+      actions: [],
+      fire: { outcome: 'failed', failure: 'reacted' },
+    });
+    await expect(page.locator('#status')).toHaveText('handled');
+  });
+
+  test('sends nothing when retargeting is turned off in the meantime', async ({ page, worker }) => {
+    await waitingMiss(page, worker, 184, 116);
+    await worker.evaluate(() => heyo.setMode('shadow'));
+    expect(await outcome(page, worker)).toEqual({
+      actions: [],
+      fire: { outcome: 'failed', failure: 'off' },
+    });
+  });
+
+  test('sends nothing when a key is pressed in the meantime', async ({ page, worker }) => {
+    await waitingMiss(page, worker, 184, 116);
+    await page.keyboard.press('Escape');
+    expect(await outcome(page, worker)).toEqual({
+      actions: [],
+      fire: { outcome: 'failed', failure: 'second-press' },
+    });
+  });
+
+  test('sends nothing when the page has started to leave', async ({ page, worker }) => {
+    // The next page takes its time, so the old one stays up past the interval.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/basic.html', async (route) => {
+      await held;
+      await route.continue();
+    });
+    await waitingMiss(page, worker, 184, 116);
+    await page.evaluate(() => void (location.href = '/basic.html'));
+    await page.waitForTimeout(1100);
+    release();
+    await page.waitForURL('**/basic.html');
+    // Had the click gone out, it would be logged as sent.
+    const [record] = await fixtureRecords(worker);
+    expect(record!.fire).toEqual({ outcome: 'failed', failure: 'reacted' });
   });
 });
 
@@ -304,6 +413,130 @@ test.describe('a wrong click report', () => {
   });
 });
 
+test.describe('retargeting stays on only while the log passes the gates', () => {
+  const settingsOf = (worker: import('@playwright/test').Worker) =>
+    worker.evaluate(() => heyo.readSettings());
+
+  /** A near miss beside Plain on the fixture page must do nothing. */
+  async function expectShadow(page: import('@playwright/test').Page) {
+    await page.goto('/replay.html');
+    await miss(page, 184, 116);
+    expect(await actionsOf(page)).toEqual([]);
+  }
+
+  test('a wrong mark on the Review tab turns it off', async ({ page, worker, extensionId }) => {
+    // 320 fires marked right and one still to mark. One wrong mark needs 473 reviewed.
+    await turnOnRetargeting(worker, { unmarked: 1 });
+    await page.goto(`chrome-extension://${extensionId}/review.html`);
+    await expect(page.locator('.plate')).toBeVisible();
+    await expect(page.locator('.verdicts[aria-busy="false"]')).toBeAttached();
+    await page.keyboard.press('n');
+    await expect
+      .poll(() => settingsOf(worker))
+      .toMatchObject({ mode: 'shadow', offReason: 'gates' });
+
+    await page.getByRole('button', { name: 'Retargeting' }).click();
+    await expect(page.getByRole('heading', { name: 'Retargeting is off' })).toBeVisible();
+    await expect(page.locator('.warning')).toContainText('no longer passes both gates');
+    await expect(page.getByRole('button', { name: 'Turn retargeting on' })).toBeDisabled();
+    await expectShadow(page);
+  });
+
+  test('deleting the log turns it off', async ({ page, worker, extensionId }) => {
+    await turnOnRetargeting(worker, { reviewed: 700 });
+    await page.goto('/replay.html');
+    await miss(page, 184, 116);
+    const [sent] = await fixtureRecords(worker);
+    await worker.evaluate((id) => heyo.reportWrong(id, false), sent!.id);
+    expect(await settingsOf(worker)).toMatchObject({ mode: 'retarget' });
+
+    await page.goto(`chrome-extension://${extensionId}/review.html`);
+    await page.getByRole('button', { name: 'Numbers' }).click();
+    await page.getByRole('button', { name: 'Delete the log' }).click();
+    await page.getByRole('button', { name: /Delete 701 clicks/ }).click();
+    await expect(page.locator('.log-size')).toContainText('0 logged clicks');
+    // The report times go with the log they were about.
+    expect(await settingsOf(worker)).toMatchObject({
+      mode: 'shadow',
+      offReason: 'gates',
+      wrongReports: [],
+    });
+    await expect(page.locator('.mode')).toContainText('Shadow mode');
+    await expectShadow(page);
+  });
+
+  test('a record that takes the log below a gate turns it off', async ({ worker }) => {
+    await turnOnRetargeting(worker);
+    // 330 more misses the decision does not recover take recovery under 50%.
+    const lost = passingLog(330).records.map((r) => ({
+      ...r,
+      features: { ...r.features, candidates: [] },
+      decision: { action: 'refuse' as const, reason: 'too-far' as const },
+    }));
+    await worker.evaluate((records) => heyo.importLog({ records, reviews: [], counts: [] }), lost);
+    expect(await settingsOf(worker)).toMatchObject({ mode: 'shadow', offReason: 'gates' });
+  });
+
+  test('keeps both of two wrong reports sent at once', async ({
+    page,
+    worker,
+    extensionId,
+    context,
+  }) => {
+    await turnOnRetargeting(worker, { reviewed: 700 });
+    await page.goto('/replay.html');
+    await miss(page, 184, 116);
+    await miss(page, 384, 216);
+    const ids = (await fixtureRecords(worker)).map((r) => r.id);
+    expect(ids).toHaveLength(2);
+
+    const review = await context.newPage();
+    await review.goto(`chrome-extension://${extensionId}/review.html`);
+    await review.evaluate(
+      (recordIds) =>
+        Promise.all(
+          recordIds.map((recordId) =>
+            chrome.runtime.sendMessage({ type: 'reportWrong', recordId, irreversible: false }),
+          ),
+        ),
+      ids,
+    );
+    const settings = await settingsOf(worker);
+    expect(settings.wrongReports).toHaveLength(2);
+    expect(settings).toMatchObject({ mode: 'shadow', offReason: 'wrong-clicks' });
+  });
+
+  test('takes its site list from the code and keeps no copy of it', async ({ page, worker }) => {
+    await turnOnRetargeting(worker, { hosts: [] });
+    const stored = await worker.evaluate(() => chrome.storage.local.get('settings'));
+    expect(JSON.stringify(stored)).not.toContain('wikipedia');
+    // A list left in storage by an older version is not read.
+    await worker.evaluate(async () => {
+      const settings = (await chrome.storage.local.get('settings')).settings as object;
+      await chrome.storage.local.set({ settings: { ...settings, allowlist: ['127.0.0.1'] } });
+    });
+    expect(await settingsOf(worker)).toMatchObject({ mode: 'retarget' });
+    await expectShadow(page);
+  });
+
+  test('checks the gates again when the worker starts', async ({ page, worker, extensionId }) => {
+    // What an update with a stricter decision would find: retargeting on, over a log that does not pass.
+    await worker.evaluate(() => chrome.storage.local.set({ settings: { mode: 'retarget' } }));
+    await page.goto(`chrome-extension://${extensionId}/review.html`);
+    const session = await page.context().newCDPSession(page);
+    await session.send('ServiceWorker.enable');
+    await session.send('ServiceWorker.stopAllWorkers');
+    // Any message starts the worker again.
+    const reply = await page.evaluate(() =>
+      chrome.runtime.sendMessage<unknown, { settings: { mode: string; offReason: string } }>({
+        type: 'setWaitForDoubleClick',
+        value: false,
+      }),
+    );
+    expect(reply.settings).toMatchObject({ mode: 'shadow', offReason: 'gates' });
+  });
+});
+
 test.describe('the retargeting tab', () => {
   test('keeps the switch locked until the gates pass', async ({ page, extensionId }) => {
     await page.goto(`chrome-extension://${extensionId}/review.html`);
@@ -320,14 +553,15 @@ test.describe('the retargeting tab', () => {
     extensionId,
   }) => {
     await worker.evaluate((log) => heyo.importLog(log), passingLog());
-    await worker.evaluate(() => heyo.setAllowlist(['127.0.0.1']));
+    await worker.evaluate(() => heyo.allowTestHosts(['127.0.0.1']));
     await page.goto(`chrome-extension://${extensionId}/review.html`);
     await page.getByRole('button', { name: 'Retargeting' }).click();
     await expect(page.getByRole('row', { name: /^Wrong-target rate/ })).toContainText('Pass');
 
     await page.getByRole('button', { name: 'Turn retargeting on' }).click();
     await expect(page.getByRole('heading', { name: 'Retargeting is on' })).toBeVisible();
-    await expect(page.locator('.mode')).toContainText('Retargeting is on for 1 site');
+    // The three sites in the code and the fixture host.
+    await expect(page.locator('.mode')).toContainText('Retargeting is on for 4 sites');
     expect(await worker.evaluate(() => heyo.readSettings())).toMatchObject({ mode: 'retarget' });
 
     await page.getByRole('button', { name: 'Turn retargeting off' }).click();

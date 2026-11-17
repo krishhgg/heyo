@@ -86,12 +86,12 @@ export async function drive({ page, context, worker, baseUrl, evidence, log }) {
   await worker.evaluate(
     async ({ seed, allow }) => {
       await heyo.importLog(seed);
-      await heyo.setAllowlist([allow]);
-      await heyo.setHeldShare(0);
+      await heyo.allowTestHosts([allow]);
+      await heyo.holdTestShare(0);
     },
     { seed: passingLog(), allow: host },
   );
-  log(`seeded 320 reviewed fires and put ${host} on the allowlist`);
+  log(`seeded 320 reviewed fires and let retargeting act on ${host}`);
 
   // 3. Turn it on through the review page, as a user would.
   const [review] = await Promise.all([

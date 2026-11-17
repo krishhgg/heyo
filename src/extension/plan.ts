@@ -1,9 +1,13 @@
 // Decides what retargeting does about one logged click.
 import type { ClickRecord } from '../core/types';
-import { isAllowed } from './allowlist';
-import type { Settings } from './settings';
+import { heldShareOf, sitesOf, type Settings } from './settings';
 
 export type FirePlan = 'log' | 'hold' | 'send';
+
+/** True when retargeting is on and may act on pages of this site. */
+export function mayAct(settings: Settings, site: string): boolean {
+  return settings.mode === 'retarget' && sitesOf(settings).includes(site);
+}
 
 /**
  * What to do about a logged click: only log it, hold it back as a control, or
@@ -18,7 +22,7 @@ export function planFire(
   record: ClickRecord,
   roll: number,
 ): FirePlan {
-  const on = settings.mode === 'retarget' && isAllowed(site, settings.allowlist);
-  if (!on || !record.features.topFrame || record.decision.action !== 'retarget') return 'log';
-  return roll < settings.heldShare ? 'hold' : 'send';
+  if (!mayAct(settings, site)) return 'log';
+  if (!record.features.topFrame || record.decision.action !== 'retarget') return 'log';
+  return roll < heldShareOf(settings) ? 'hold' : 'send';
 }

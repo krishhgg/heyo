@@ -14,8 +14,3 @@ export const ALLOWLIST: AllowedSite[] = [
   { host: 'news.ycombinator.com', tested: '2026-11-17' },
   { host: 'developer.mozilla.org', tested: '2026-11-17' },
 ];
-
-/** True when retargeting may act on a page of this site. */
-export function isAllowed(site: string, hosts: readonly string[]): boolean {
-  return hosts.includes(site);
-}

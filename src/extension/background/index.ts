@@ -1,6 +1,6 @@
 import { GATES, retargetGates } from '../../core/gates';
 import { score } from '../../core/metrics';
-import type { LogExport } from '../../core/types';
+import type { LogExport, Review } from '../../core/types';
 import { decide } from '../../decision';
 import {
   addCount,
@@ -22,35 +22,64 @@ const WEEK_MS = 7 * 86_400_000;
 /** How long the toolbar button shows that heyo just sent a click on. */
 const BADGE_MS = 2500;
 
-/** Writes run one at a time, so a follow-up never lands before its record. */
+/**
+ * Everything that reads or writes the log or the settings runs here, one job
+ * at a time. A follow-up never lands before its record, and two requests never
+ * work from the same stale copy of the settings.
+ */
 let queue: Promise<unknown> = Promise.resolve();
 
-function store(message: WorkerMessage): Promise<void> {
-  switch (message.type) {
-    case 'count':
-      return addCount(message.site, message.field, Date.now());
-    case 'record':
-      return putRecord(message.record);
-    case 'followUp':
-      return setFollowUp(message.id, message.followUp);
-    case 'fire':
-      if (message.fire.outcome === 'sent') flashBadge();
-      return setFire(message.id, message.fire);
-  }
+function inTurn<T>(job: () => Promise<T>): Promise<T> {
+  const run = queue.then(job);
+  queue = run.catch((error: unknown) => console.error('heyo could not finish a job', error));
+  return run;
 }
 
-/** Marks the toolbar button for a moment, so the user can tell heyo acted. */
-function flashBadge(): void {
-  void chrome.action.setBadgeBackgroundColor({ color: '#1f3fd6' });
-  void chrome.action.setBadgeText({ text: '→' });
-  setTimeout(() => void chrome.action.setBadgeText({ text: '' }), BADGE_MS);
+async function store(message: WorkerMessage, tabId: number | undefined): Promise<void> {
+  switch (message.type) {
+    case 'count':
+      // A count is not part of either gate.
+      return addCount(message.site, message.field, Date.now());
+    case 'record':
+      await putRecord(message.record);
+      break;
+    case 'followUp':
+      await setFollowUp(message.id, message.followUp);
+      break;
+    case 'fire':
+      if (message.fire.outcome === 'sent') flashBadge(tabId);
+      await setFire(message.id, message.fire);
+      break;
+  }
+  await enforce();
+}
+
+/** Marks the toolbar button on one tab for a moment, so the user can tell heyo acted there. */
+function flashBadge(tabId: number | undefined): void {
+  if (tabId === undefined) return;
+  const set = (text: string) => chrome.action.setBadgeText({ text, tabId }).catch(() => undefined);
+  void chrome.action.setBadgeBackgroundColor({ color: '#1f3fd6', tabId }).catch(() => undefined);
+  void set('→');
+  // The tab may be closed by then, which is fine.
+  setTimeout(() => void set(''), BADGE_MS);
 }
 
 /** True when the local log passes both data gates in front of retargeting. */
 async function gatesPass(): Promise<boolean> {
-  await queue;
   const log = await readLog();
   return retargetGates(score(log.records, log.reviews, decide)).pass;
+}
+
+/**
+ * Retargeting stays on only while the log passes the gates. This runs after
+ * every change to the log and each time the worker starts, which covers an
+ * update that brings a new decision. It turns retargeting off when the gates
+ * no longer pass.
+ */
+async function enforce(): Promise<Settings> {
+  const settings = await readSettings();
+  if (settings.mode !== 'retarget' || (await gatesPass())) return settings;
+  return writeSettings({ mode: 'shadow', offReason: 'gates' });
 }
 
 /** Turns retargeting on only when the gates pass. Turning it off always works. */
@@ -68,7 +97,6 @@ async function setMode(mode: Settings['mode']): Promise<PageReply> {
  * marks no longer pass the gates.
  */
 async function reportWrong(recordId: string, irreversible: boolean): Promise<PageReply> {
-  await queue;
   const now = Date.now();
   const { records } = await readLog();
   const record = records.find((r) => r.id === recordId);
@@ -86,6 +114,19 @@ async function reportWrong(recordId: string, irreversible: boolean): Promise<Pag
   return { ok: true, settings: await writeSettings(change) };
 }
 
+/** Stores a mark from the review page. */
+async function mark(review: Review): Promise<PageReply> {
+  await putReview(review);
+  return { ok: true, settings: await enforce() };
+}
+
+/** Deletes the log, and the report times that were about it. An empty log passes no gate. */
+async function clear(): Promise<PageReply> {
+  await clearLog();
+  await writeSettings({ wrongReports: [] });
+  return { ok: true, settings: await enforce() };
+}
+
 function answer(request: PageRequest): Promise<PageReply> {
   switch (request.type) {
     case 'setMode':
@@ -97,28 +138,42 @@ function answer(request: PageRequest): Promise<PageReply> {
       }));
     case 'reportWrong':
       return reportWrong(request.recordId, request.irreversible);
+    case 'review':
+      return mark(request.review);
+    case 'clearLog':
+      return clear();
   }
 }
 
-const PAGE_REQUESTS = new Set(['setMode', 'setWaitForDoubleClick', 'reportWrong']);
+const PAGE_REQUESTS = new Set<string>([
+  'setMode',
+  'setWaitForDoubleClick',
+  'reportWrong',
+  'review',
+  'clearLog',
+] satisfies PageRequest['type'][]);
 
 chrome.runtime.onMessage.addListener(
   (message: WorkerMessage | PageRequest, sender, sendResponse) => {
     if (PAGE_REQUESTS.has(message.type)) {
-      // Settings change only at the request of one of the extension's own pages.
-      if (sender.url?.startsWith(chrome.runtime.getURL(''))) {
-        void answer(message as PageRequest).then(sendResponse);
-        return true;
-      }
-      return false;
+      // The settings and the marks change only at the request of one of the extension's own pages.
+      if (!sender.url?.startsWith(chrome.runtime.getURL(''))) return false;
+      void inTurn(() => answer(message as PageRequest))
+        .catch(async () => ({ ok: false, settings: await readSettings() }))
+        .then(sendResponse);
+      return true;
     }
-    const write = queue.then(() => store(message as WorkerMessage));
-    queue = write.catch((error: unknown) => console.error('heyo could not store a message', error));
     // Answering after the write keeps the worker alive until the write is done.
-    void queue.then(() => sendResponse(true));
+    void inTurn(() => store(message as WorkerMessage, sender.tab?.id)).then(
+      () => sendResponse(true),
+      () => sendResponse(false),
+    );
     return true;
   },
 );
+
+// The worker starts after an install, an update and a browser start, and whenever a message wakes it.
+void inTurn(enforce);
 
 /** The toolbar button opens the review page, or switches to it if it is already open. */
 chrome.action.onClicked.addListener(() => {
@@ -147,9 +202,8 @@ async function pingTab(tabId: number, frameId = 0): Promise<PingReply> {
   return chrome.tabs.sendMessage<PingRequest, PingReply>(tabId, request, { frameId });
 }
 
-/** The whole local log, in the format the scorer reads. Waits for pending writes. */
+/** The whole local log, in the format the scorer reads. */
 async function exportLog(): Promise<LogExport> {
-  await queue;
   return {
     format: 'heyo-log',
     v: 1,
@@ -166,19 +220,22 @@ async function exportLog(): Promise<LogExport> {
  */
 const api = {
   pingTab,
-  exportLog,
-  clearLog,
   openReview,
-  setMode,
-  reportWrong,
-  readSettings,
+  /** Waits for pending writes, like everything below. */
+  exportLog: () => inTurn(exportLog),
+  clearLog: () => inTurn(clear),
+  setMode: (mode: Settings['mode']) => inTurn(() => setMode(mode)),
+  reportWrong: (recordId: string, irreversible: boolean) =>
+    inTurn(() => reportWrong(recordId, irreversible)),
+  readSettings: () => inTurn(readSettings),
   /** Loads an exported log into the store, such as a synthetic one that passes the gates. */
-  importLog: (log: Log) => importLog(log),
-  /** Replaces the list of sites where retargeting may act. */
-  setAllowlist: (allowlist: string[]) => writeSettings({ allowlist }),
-  setWaitForDoubleClick: (value: boolean) => writeSettings({ waitForDoubleClick: value }),
+  importLog: (log: Log) => inTurn(() => importLog(log).then(enforce)),
+  /** Lets retargeting act on a test's own pages, on top of the sites in the code. */
+  allowTestHosts: (testHosts: string[]) => inTurn(() => writeSettings({ testHosts })),
+  setWaitForDoubleClick: (value: boolean) =>
+    inTurn(() => writeSettings({ waitForDoubleClick: value })),
   /** Sets the share of fires held back as a control: 0 sends every fire, 1 holds every fire. */
-  setHeldShare: (heldShare: number) => writeSettings({ heldShare }),
+  holdTestShare: (testHeldShare: number) => inTurn(() => writeSettings({ testHeldShare })),
 };
 
 export type HeyoWorkerApi = typeof api;

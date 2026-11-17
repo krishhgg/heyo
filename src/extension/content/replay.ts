@@ -6,6 +6,7 @@ import { nearestPointInRect } from '../../core/geometry';
 import type { Candidate, Fire } from '../../core/types';
 import { boxOf } from './candidates';
 import { isDisabled, tagOf } from './clickable';
+import { labelOf, typedText } from './describe';
 import { allShadowRoots, elementAt, isWithin, parentOf } from './dom';
 import { reacted, ReactionWatch } from './reaction';
 
@@ -82,7 +83,7 @@ function checkedOf(control: Element): boolean | null {
  * click that landed at `click`. Calls `report` once with what happened: at
  * once if nothing could be sent, otherwise after the page has had time to
  * react or when it unloads. It sends nothing if the control is gone, has
- * moved, is covered by something else, or is disabled.
+ * moved or changed its name, is covered by something else, or is disabled.
  */
 export function sendClick(
   control: Element,
@@ -93,10 +94,14 @@ export function sendClick(
   if (!control.isConnected || isDisabled(control)) return report(failed('gone'));
   const box = boxOf(control, control, click.x, click.y);
   if (!box) return report(failed('gone'));
-  const moved =
-    Math.abs(box.rect.x - candidate.rect.x) > MOVED_PX ||
-    Math.abs(box.rect.y - candidate.rect.y) > MOVED_PX;
+  // Every edge, not only the corner: a control that shrank has moved its near edge away.
+  const edges = ['x', 'y', 'w', 'h'] as const;
+  const moved = edges.some((e) => Math.abs(box.rect[e] - candidate.rect[e]) > MOVED_PX);
   if (moved) return report(failed('moved'));
+  // The decision judged the control by the name it had at the press.
+  if (labelOf(control, typedText(allShadowRoots())).text !== candidate.label) {
+    return report(failed('renamed'));
+  }
 
   // The box is relative to the click point. The events need viewport coordinates.
   const at = pointInside(
@@ -145,12 +150,15 @@ export function sendClick(
     return;
   }
 
+  // A handler can remove or disable the control in the middle of the press.
+  // Chrome sends such a press no click, and heyo sends nothing more.
+  const live = () => top.isConnected && control.isConnected && !isDisabled(control);
   const pressed = fire(top, 'pointerdown', at, 1);
   // As for a real press, a page that cancels pointerdown gets no mouse events and no focus.
-  const mouseDown = pressed && fire(top, 'mousedown', at, 1);
-  if (mouseDown) focusable(top, control)?.focus({ preventScroll: true });
-  fire(top, 'pointerup', at, 0);
-  if (pressed) fire(top, 'mouseup', at, 0);
-  fire(top, 'click', at, 0);
+  const mouseDown = pressed && live() && fire(top, 'mousedown', at, 1);
+  if (mouseDown && live()) focusable(top, control)?.focus({ preventScroll: true });
+  if (live()) fire(top, 'pointerup', at, 0);
+  if (pressed && live()) fire(top, 'mouseup', at, 0);
+  if (live()) fire(top, 'click', at, 0);
   window.setTimeout(() => finish(false), SETTLE_MS);
 }

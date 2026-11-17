@@ -2,11 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { score as scoreLog } from '../../../core/metrics';
 import type { Review, Verdict } from '../../../core/types';
 import { decide } from '../../../decision';
-import { clearLog, putReview, readLog, type Log } from '../../db';
+import { readLog, type Log } from '../../db';
 import type { PageReply, PageRequest } from '../../messages';
-import { DEFAULT_SETTINGS, readSettings, watchSettings, type Settings } from '../../settings';
+import {
+  DEFAULT_SETTINGS,
+  readSettings,
+  sitesOf,
+  watchSettings,
+  type Settings,
+} from '../../settings';
 import { decisionVersion } from '../../version';
-import { firesOf, reviewKey, toExport, verdictsOf, type Fire } from './data';
+import { firesOf, plural, reviewKey, toExport, verdictsOf, type Fire } from './data';
 import { NumbersView } from './NumbersView';
 import { RetargetView } from './RetargetView';
 import { ReviewView } from './ReviewView';
@@ -75,9 +81,19 @@ export function App() {
     );
   }
 
+  // Only the service worker changes the settings and the log. It checks the gates before
+  // turning retargeting on, and again after every mark and after the log is deleted.
+  const ask = async (message: PageRequest): Promise<Settings> => {
+    const reply = await chrome.runtime.sendMessage<PageRequest, PageReply | undefined>(message);
+    if (!reply) throw new Error('heyo did not answer.');
+    setSettings(reply.settings);
+    if (!reply.ok) throw new Error('heyo refused the request.');
+    return reply.settings;
+  };
+
   const onVerdict = async (fire: Fire, verdict: Verdict) => {
     const review = { recordId: fire.record.id, candidate: fire.picked.id, verdict, t: Date.now() };
-    await putReview(review);
+    await ask({ type: 'review', review });
     // The store keeps one mark per click and control, so a changed mark replaces the old one here too.
     const same = (r: Review) => r.recordId === review.recordId && r.candidate === review.candidate;
     setLog((current) =>
@@ -97,18 +113,18 @@ export function App() {
   };
 
   const onDelete = async () => {
-    await clearLog();
+    await ask({ type: 'clearLog' });
     reload();
   };
 
   const waiting = fires.filter((f) => !verdicts.has(reviewKey(f))).length;
 
-  // Only the service worker changes settings. It checks the gates before turning retargeting on.
   const request = async (message: PageRequest) => {
-    const reply = await chrome.runtime.sendMessage<PageRequest, PageReply>(message);
-    setSettings(reply.settings);
+    // A refusal comes back with the settings as they stand, which is all the tab needs.
+    await ask(message).catch(() => undefined);
     reload();
   };
+  const sites = sitesOf(settings).length;
   const retargeting = settings.mode === 'retarget';
 
   return (
@@ -117,7 +133,7 @@ export function App() {
         <h1 class="wordmark">heyo</h1>
         <p class="mode">
           {retargeting
-            ? `Retargeting is on for ${settings.allowlist.length} ${settings.allowlist.length === 1 ? 'site' : 'sites'}. Everywhere else heyo only logs.`
+            ? `Retargeting is on for ${plural(sites, 'site')}. Everywhere else heyo only logs.`
             : 'Shadow mode. heyo is logging and changes nothing on any page.'}
         </p>
         <nav class="tabs" aria-label="Sections">

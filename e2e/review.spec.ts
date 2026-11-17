@@ -313,7 +313,8 @@ test.describe('the review page', () => {
     await openReviewWithFires(page, worker, extensionId);
     const first = await page.locator('.target').innerText();
     // The next write to the store fails once, as it does when the disk is full.
-    await page.evaluate(() => {
+    // Marks are stored by the service worker, so that is where the write fails.
+    await worker.evaluate(() => {
       // The method is put back on the same prototype, so it keeps its receiver.
       // eslint-disable-next-line @typescript-eslint/unbound-method
       const put = IDBObjectStore.prototype.put;
@@ -583,12 +584,21 @@ test('says so when the log cannot be exported or deleted', async ({
 }) => {
   await openReviewWithFires(page, worker, extensionId);
   await page.getByRole('button', { name: 'Numbers' }).click();
-  // Every transaction on the store fails from here on.
-  await page.evaluate(() => {
+  // Every transaction on the store fails from here on: in the page, which reads
+  // the log to export it, and in the service worker, which deletes it.
+  const breakStore = () => {
+    // The method is put back on the same prototype, so it keeps its receiver.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const transaction = IDBDatabase.prototype.transaction;
+    (globalThis as { mendStore?: () => void }).mendStore = () => {
+      IDBDatabase.prototype.transaction = transaction;
+    };
     IDBDatabase.prototype.transaction = () => {
       throw new DOMException('The store is not available.', 'UnknownError');
     };
-  });
+  };
+  await page.evaluate(breakStore);
+  await worker.evaluate(breakStore);
 
   await page.getByRole('button', { name: 'Export the log' }).click();
   await expect(page.getByRole('alert')).toHaveText(/could not be exported/);
@@ -596,6 +606,7 @@ test('says so when the log cannot be exported or deleted', async ({
   await page.getByRole('button', { name: 'Delete the log' }).click();
   await page.getByRole('button', { name: /Delete 4 clicks/ }).click();
   await expect(page.getByRole('alert')).toHaveText(/could not be deleted/);
+  await worker.evaluate(() => (globalThis as { mendStore?: () => void }).mendStore?.());
   expect((await readLog(worker)).records).toHaveLength(4);
 });
 

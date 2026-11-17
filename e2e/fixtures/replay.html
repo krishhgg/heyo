@@ -33,6 +33,13 @@
         width: 80px;
         height: 20px;
       }
+      /* With ?move or ?shrink, pointing at the zone moves or shrinks Mover without touching the DOM. */
+      body.move:has(#zone:hover) #mover {
+        left: 960px !important;
+      }
+      body.shrink:has(#zone:hover) #mover {
+        width: 40px;
+      }
     </style>
   </head>
   <body>
@@ -80,6 +87,14 @@
     </form>
     <button id="mover" class="at" style="left: 900px; top: 300px">Mover</button>
 
+    <!-- Row 4 -->
+    <div id="renamer" class="item at" role="button" tabindex="0" style="left: 100px; top: 400px">
+      Rename
+    </div>
+    <button id="vanisher" class="at" style="left: 300px; top: 400px">Vanisher</button>
+    <p id="status" class="at" style="left: 500px; top: 400px; margin: 0"></p>
+    <div id="zone" class="at" style="left: 900px; top: 480px; width: 80px; height: 32px"></div>
+
     <script>
       // Everything a control did, in order. A test checks that the intended action happened exactly once.
       const actions = [];
@@ -116,15 +131,33 @@
         actions.push(opened ? 'popup' : 'popup blocked');
       });
 
-      // ?move makes this control jump away a moment after a click on empty space.
       document.getElementById('mover').addEventListener('click', () => actions.push('mover'));
-      if (new URLSearchParams(location.search).has('move')) {
-        document.addEventListener('click', (event) => {
-          if (event.isTrusted && event.target === document.body) {
-            setTimeout(() => (document.getElementById('mover').style.left = '960px'), 200);
-          }
-        });
-      }
+      on('renamer', 'click');
+
+      // A control that removes itself as it is pressed. A real press on it gets no click.
+      const vanisher = document.getElementById('vanisher');
+      vanisher.addEventListener('pointerdown', () => {
+        actions.push('vanished');
+        vanisher.remove();
+      });
+      vanisher.addEventListener('click', () => actions.push('vanisher clicked'));
+
+      // What the page does about a real click on empty space, by the words in the query string.
+      const modes = new URLSearchParams(location.search);
+      for (const mode of modes.keys()) document.body.classList.add(mode);
+      document.addEventListener('click', (event) => {
+        if (!event.isTrusted || event.target !== document.body) return;
+        // ?late handles the click after a wait, longer than heyo gives a page to react.
+        if (modes.has('late')) {
+          setTimeout(() => (document.getElementById('status').textContent = 'handled'), 200);
+        }
+        // ?rename gives a control another name, in a new shadow root. A watch on
+        // the document sees neither the root nor the text put in it.
+        if (modes.has('rename')) {
+          document.getElementById('renamer').attachShadow({ mode: 'open' }).textContent =
+            'Delete all';
+        }
+      });
     </script>
   </body>
 </html>

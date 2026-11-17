@@ -1,5 +1,6 @@
 // What the user has turned on. Kept in chrome.storage.local, which content
-// scripts can read. Only the service worker writes the mode, after checking the gates.
+// scripts can read. Only the service worker writes it, and it turns
+// retargeting on only while the log passes the gates.
 import { GATES } from '../core/gates';
 import { ALLOWLIST } from './allowlist';
 
@@ -11,36 +12,60 @@ export interface Settings {
    * nothing if a second press comes first.
    */
   waitForDoubleClick: boolean;
-  /** Hostnames where retargeting may act. */
-  allowlist: string[];
-  /** Why heyo turned retargeting off by itself, if it did. */
-  offReason: null | 'wrong-clicks' | 'irreversible';
+  /**
+   * Why heyo turned retargeting off by itself, if it did: the log stopped
+   * passing the gates, the user reported wrong clicks, or the user reported one
+   * that could not be undone.
+   */
+  offReason: null | 'gates' | 'wrong-clicks' | 'irreversible';
   /** Times at which the user reported a wrong click. */
   wrongReports: number[];
-  /** Share of fires held back as a control. Tests set it to 0 or 1 to make runs repeatable. */
-  heldShare: number;
+  /**
+   * Hostnames where retargeting may act on top of the list in the code. Only
+   * tests and verification drives set this, to allow their fixture pages.
+   */
+  testHosts: string[];
+  /** A share of fires to hold back in place of the product's. Only tests set this, to make runs repeatable. */
+  testHeldShare: number | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   mode: 'shadow',
   waitForDoubleClick: false,
-  allowlist: ALLOWLIST.map((site) => site.host),
   offReason: null,
   wrongReports: [],
-  heldShare: GATES.heldShare,
+  testHosts: [],
+  testHeldShare: null,
 };
 
 const KEY = 'settings';
 
-export async function readSettings(): Promise<Settings> {
-  const stored = (await chrome.storage.local.get(KEY))[KEY] as Partial<Settings> | undefined;
-  return { ...DEFAULT_SETTINGS, ...stored };
+/** The sites where retargeting may act: the list in the code, plus any a test added. */
+export function sitesOf(settings: Settings): string[] {
+  return [...ALLOWLIST.map((site) => site.host), ...settings.testHosts];
 }
 
+/** The share of fires held back as a control. */
+export function heldShareOf(settings: Settings): number {
+  return settings.testHeldShare ?? GATES.heldShare;
+}
+
+async function stored(): Promise<Partial<Settings>> {
+  return ((await chrome.storage.local.get(KEY))[KEY] as Partial<Settings> | undefined) ?? {};
+}
+
+export async function readSettings(): Promise<Settings> {
+  return { ...DEFAULT_SETTINGS, ...(await stored()) };
+}
+
+/**
+ * Stores a change. Only what was changed is kept, so a default that changes in
+ * a later version is not held back by an old copy.
+ */
 export async function writeSettings(change: Partial<Settings>): Promise<Settings> {
-  const next = { ...(await readSettings()), ...change };
+  const next = { ...(await stored()), ...change };
   await chrome.storage.local.set({ [KEY]: next });
-  return next;
+  return { ...DEFAULT_SETTINGS, ...next };
 }
 
 /** Calls back with the new settings whenever they change. */

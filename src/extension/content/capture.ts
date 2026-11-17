@@ -5,7 +5,7 @@ import { DOUBLE_PRESS_MS, FOLLOW_UP_WINDOW_MS, MISS_RADIUS_PX } from '../../core
 import type { ClickFeatures, ClickRecord, Fire, FollowUp, PathSample } from '../../core/types';
 import { decide } from '../../decision';
 import type { WorkerMessage } from '../messages';
-import { planFire } from '../plan';
+import { mayAct, planFire } from '../plan';
 import { DEFAULT_SETTINGS, readSettings, watchSettings, type Settings } from '../settings';
 import { decisionVersion } from '../version';
 import { boxOf, findCandidates, isLabelPair, type Found } from './candidates';
@@ -115,14 +115,21 @@ export function startCapture(): void {
   /** The press whose click is waiting out the settle time. */
   let settling: { press: Press; timer: number } | null = null;
   let pending: Pending | null = null;
-  /** A click heyo is about to send on, once the double-click interval has passed. */
-  let waiting: { id: string; timer: number } | null = null;
+  /**
+   * A click heyo is about to send on, once the double-click interval has
+   * passed. `watch` sees what the page does in the meantime.
+   */
+  let waiting: { id: string; timer: number; watch: ReactionWatch } | null = null;
   let stopped = false;
 
   // Until the settings load, and whenever they cannot be read, heyo only logs.
   let settings: Settings = DEFAULT_SETTINGS;
   void readSettings().then((loaded) => (settings = loaded));
-  watchSettings((changed) => (settings = changed));
+  watchSettings((changed) => {
+    settings = changed;
+    // Turning retargeting off also stops a click that is waiting to go out.
+    if (!mayAct(settings, site)) cancelWaiting('off');
+  });
 
   /** Caches listener answers for one press, since rings of sample points share ancestors. */
   function listenerLookup(): HasListener {
@@ -215,6 +222,33 @@ export function startCapture(): void {
     };
   }
 
+  /** Ends the wait before a click goes out, and says whether the page did anything during it. */
+  function endWaiting(): { id: string; reacted: boolean } | null {
+    if (!waiting) return null;
+    const { id, timer, watch } = waiting;
+    waiting = null;
+    clearTimeout(timer);
+    window.removeEventListener('keydown', onInputWhileWaiting, true);
+    window.removeEventListener('beforeunload', onLeaveWhileWaiting, true);
+    return { id, reacted: reacted(watch.stop()) };
+  }
+
+  /** Drops the click that is waiting to go out, and logs why. */
+  function cancelWaiting(failure: NonNullable<Fire['failure']>): void {
+    const ended = endWaiting();
+    if (ended) send({ type: 'fire', id: ended.id, fire: { outcome: 'failed', failure } });
+  }
+
+  /** A key pressed during the wait means the user has moved on, as a second press does. */
+  function onInputWhileWaiting(event: Event): void {
+    if (event.isTrusted) cancelWaiting('second-press');
+  }
+
+  /** A page that starts to leave has reacted, also when its unload takes a while. */
+  function onLeaveWhileWaiting(): void {
+    cancelWaiting('reacted');
+  }
+
   /** Sends the click on to the decision's target, now or after the double-click interval. */
   function sendOn(record: ClickRecord, p: Press): void {
     if (record.decision.action !== 'retarget' || !p.empty) return;
@@ -224,12 +258,24 @@ export function startCapture(): void {
     const report = (fire: Fire) => send({ type: 'fire', id: record.id, fire });
     if (!control || !candidate) return report({ outcome: 'failed', failure: 'gone' });
     const go = () => {
-      waiting = null;
+      // Retargeting may have been turned off since the click was planned.
+      if (!mayAct(settings, site)) return report({ outcome: 'failed', failure: 'off' });
       sendClick(control, candidate, { x: p.x, y: p.y }, report);
     };
     if (!settings.waitForDoubleClick) return go();
+    // The page is watched through the wait, as it was through the click's own
+    // settle time. If it does anything, the click it ignored was not ignored after all.
+    const watch = p.empty.watch.again();
     const wait = Math.max(0, DOUBLE_PRESS_MS - (performance.now() - p.t));
-    waiting = { id: record.id, timer: window.setTimeout(go, wait) };
+    const timer = window.setTimeout(() => {
+      const ended = endWaiting();
+      if (!ended) return;
+      if (ended.reacted) return report({ outcome: 'failed', failure: 'reacted' });
+      go();
+    }, wait);
+    waiting = { id: record.id, timer, watch };
+    window.addEventListener('keydown', onInputWhileWaiting, true);
+    window.addEventListener('beforeunload', onLeaveWhileWaiting, true);
   }
 
   /**
@@ -303,17 +349,14 @@ export function startCapture(): void {
   }
 
   function onPointerDown(event: PointerEvent): void {
+    // Any press before the click was sent on means the user is double-clicking,
+    // retrying or doing something else. Nothing is sent after it.
+    if (event.isTrusted) cancelWaiting('second-press');
     if (!event.isTrusted || event.pointerType !== 'mouse' || event.button !== 0) return;
     // A new press ends the previous click's settle time, so the page's reaction
     // to this press is not charged to that click.
     finalize('pressed');
     dropPress();
-    // A second press before the click was sent on means the user is double-clicking or retrying.
-    if (waiting) {
-      clearTimeout(waiting.timer);
-      send({ type: 'fire', id: waiting.id, fire: { outcome: 'failed', failure: 'second-press' } });
-      waiting = null;
-    }
 
     const path = event.composedPath();
     const origin = path[0];
@@ -431,9 +474,14 @@ export function startCapture(): void {
     if (event.target === window) pending = null;
   }
 
-  /** A page that unloads during the settle time reacted by navigating. */
+  /**
+   * A page that unloads during the settle time reacted by navigating. A click
+   * waiting to go out is dropped too, or it would go out when the page comes
+   * back from the back/forward cache.
+   */
   function onPageHide(): void {
     finalize('unloading');
+    cancelWaiting('reacted');
   }
 
   function stop(): void {
@@ -451,7 +499,7 @@ export function startCapture(): void {
     dropPress();
     settling?.press.empty?.watch.stop();
     if (settling) clearTimeout(settling.timer);
-    if (waiting) clearTimeout(waiting.timer);
+    endWaiting();
   }
 
   window.addEventListener('pointerdown', onPointerDown, true);

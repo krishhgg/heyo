@@ -5,7 +5,8 @@ import type { Score } from '../../../core/metrics';
 import type { ClickRecord } from '../../../core/types';
 import type { Log } from '../../db';
 import type { PageRequest } from '../../messages';
-import type { Settings } from '../../settings';
+import { sitesOf, type Settings } from '../../settings';
+import { percentBeside } from './data';
 
 interface Props {
   log: Log;
@@ -25,6 +26,8 @@ const STATUS_WORDS: Record<GateStatus, string> = {
 };
 
 const OFF_REASONS: Record<NonNullable<Settings['offReason']>, string> = {
+  gates:
+    'heyo turned retargeting off because your log no longer passes both gates. It can go on again once they pass.',
   'wrong-clicks':
     'heyo turned retargeting off because of wrong clicks you reported. Review more fires, then turn it on again if the gates pass.',
   irreversible:
@@ -52,7 +55,7 @@ function targetOf(record: ClickRecord): string {
 export function RetargetView({ log, score, settings, request }: Props) {
   const gates = retargetGates(score);
   const on = settings.mode === 'retarget';
-  const sites = settings.allowlist;
+  const sites = sitesOf(settings);
   const wrong = new Set(log.reviews.filter((r) => r.verdict === 'wrong').map((r) => r.recordId));
   const sent = log.records.filter(wasSent);
   const recent = [...sent].sort((a, b) => b.t - a.t).slice(0, RECENT);
@@ -105,7 +108,7 @@ export function RetargetView({ log, score, settings, request }: Props) {
               <td class="num">
                 {gates.recovery.recovery === null
                   ? 'no misses yet'
-                  : `${percent(gates.recovery.recovery)} of ${gates.recovery.misses} misses`}
+                  : `${percentBeside(gates.recovery.recovery, GATES.minRecovery, 0)} of ${gates.recovery.misses} misses`}
               </td>
               <td>
                 {100 * GATES.minRecovery}% or more, on {GATES.minMisses} misses or more
@@ -169,12 +172,16 @@ export function RetargetView({ log, score, settings, request }: Props) {
               <td />
             </tr>
             <tr>
-              <th scope="row">Got no visible reaction from the page</th>
+              <th scope="row">Changed nothing heyo could see</th>
               <td class="num">
                 {score.sentIgnored.toLocaleString()}
                 {ignoredShare !== null && ` (${percent(ignoredShare)})`}
               </td>
-              <td>above {100 * GATES.maxIgnoredShare}%, take sites off the list</td>
+              <td>
+                runs high, since a click that worked without changing the page counts too. If a site
+                is above {100 * GATES.maxIgnoredShare}% and its clicks did nothing, it comes off the
+                list
+              </td>
             </tr>
             <tr>
               <th scope="row">Held back as a control</th>
@@ -191,6 +198,7 @@ export function RetargetView({ log, score, settings, request }: Props) {
                   <strong>{targetOf(record)}</strong>
                   <span class="fire-where">
                     {record.site}, {when(record.t)}
+                    {record.fire?.reacted === false && ', changed nothing heyo could see'}
                   </span>
                 </span>
                 {wrong.has(record.id) ? (

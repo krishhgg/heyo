@@ -193,8 +193,19 @@ export interface Fire {
    * failed: the click could not be sent.
    */
   outcome: 'sent' | 'held' | 'failed';
-  /** Why the click could not be sent. Only with outcome failed. */
-  failure?: 'gone' | 'moved' | 'covered' | 'unsupported' | 'second-press';
+  /**
+   * Why the click was not sent. Only with outcome failed.
+   * gone: the control left the page or was disabled.
+   * moved: its box moved or changed size.
+   * renamed: its name changed.
+   * covered: something else was on top of it.
+   * unsupported: the control cannot be worked without real input.
+   * second-press: the user pressed a button or a key again first.
+   * reacted: the page did something, or began to leave, while heyo waited.
+   * off: retargeting was turned off while heyo waited.
+   */
+  failure?:
+    'gone' | 'moved' | 'renamed' | 'covered' | 'unsupported' | 'second-press' | 'reacted' | 'off';
   /** The page reacted to the click heyo sent. Only with outcome sent. */
   reacted?: boolean;
 }
