@@ -16,6 +16,8 @@ function scoreOf(overrides: Partial<Score>): Score {
     unsure: 0,
     wrongUpper: null,
     doublePress: 0,
+    sent: 0,
+    sentIgnored: 0,
     ...overrides,
   };
   if (base.misses > 0) base.recovery = base.recovered / base.misses;

@@ -1,6 +1,6 @@
 // The numbers the plan steers by, computed from a log and a decision function.
 import { daysBetween } from './days';
-import { isDoublePress, isLabeledMiss, isMaskedMiss } from './labels';
+import { isDoublePress, isLabeledMiss, isMaskedMiss, wasSent } from './labels';
 import { upperBound } from './stats';
 import type { ClickRecord, DayCount, Decide, Review } from './types';
 
@@ -27,6 +27,10 @@ export interface Score {
   wrongUpper: number | null;
   /** Fires followed by a second press within the double-click interval. */
   doublePress: number;
+  /** Clicks heyo sent on while retargeting was on. */
+  sent: number;
+  /** Sent clicks the page did not react to. Pages that check for real input ignore them. */
+  sentIgnored: number;
 }
 
 function reviewKey(recordId: string, candidate: number): string {
@@ -58,9 +62,15 @@ export function score(records: ClickRecord[], reviews: Review[], decide: Decide)
     unsure: 0,
     wrongUpper: null,
     doublePress: 0,
+    sent: 0,
+    sentIgnored: 0,
   };
 
   for (const record of records) {
+    if (wasSent(record)) {
+      result.sent++;
+      if (!record.fire?.reacted) result.sentIgnored++;
+    }
     const decision = decide(record.features);
     const picked = decision.action === 'retarget' ? decision.candidate : null;
     const miss = isLabeledMiss(record);

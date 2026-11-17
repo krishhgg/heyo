@@ -76,6 +76,19 @@ describe('score', () => {
     });
   });
 
+  it('leaves a click heyo sent on out of the misses, and counts the ones the page ignored', () => {
+    const sent = record(two, hit(0, 4), { fire: { outcome: 'sent', reacted: true } });
+    const ignored = record(two, null, { fire: { outcome: 'sent', reacted: false } });
+    const held = record(two, hit(0, 4), { fire: { outcome: 'held' } });
+    expect(score([sent, ignored, held], [], nearest)).toMatchObject({
+      misses: 1,
+      recovered: 1,
+      fires: 3,
+      sent: 2,
+      sentIgnored: 1,
+    });
+  });
+
   it('counts fires followed by a second press in the same spot', () => {
     const second = { dt: 250, dx: 0, dy: 1, kind: 'empty' as const, candidate: null, dist: null };
     expect(score([record(two, second), record(two)], [], nearest).doublePress).toBe(1);

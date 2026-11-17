@@ -1,7 +1,7 @@
 // The local log, in IndexedDB under the extension's own origin. The service
 // worker writes it. The extension's pages read it and add reviews.
 import { dayOf } from '../core/days';
-import type { ClickRecord, DayCount, FollowUp, Review } from '../core/types';
+import type { ClickRecord, DayCount, Fire, FollowUp, Review } from '../core/types';
 
 const NAME = 'heyo';
 const VERSION = 1;
@@ -59,6 +59,24 @@ export async function setFollowUp(id: string, followUp: FollowUp): Promise<void>
   const store = tx.objectStore('records');
   const record = (await request(store.get(id))) as ClickRecord | undefined;
   if (record) store.put({ ...record, followUp });
+  await done(tx);
+}
+
+/** Records what heyo did about a stored record. Does nothing if the record is gone. */
+export async function setFire(id: string, fire: Fire): Promise<void> {
+  const tx = (await open()).transaction('records', 'readwrite');
+  const store = tx.objectStore('records');
+  const record = (await request(store.get(id))) as ClickRecord | undefined;
+  if (record) store.put({ ...record, fire });
+  await done(tx);
+}
+
+/** Adds a whole exported log to the store. Records with the same id are replaced. */
+export async function importLog(log: Log): Promise<void> {
+  const tx = (await open()).transaction(['records', 'reviews', 'counts'], 'readwrite');
+  for (const record of log.records) tx.objectStore('records').put(record);
+  for (const review of log.reviews) tx.objectStore('reviews').put(review);
+  for (const count of log.counts) tx.objectStore('counts').put(count);
   await done(tx);
 }
 

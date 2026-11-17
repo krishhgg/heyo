@@ -12,8 +12,16 @@ export const MISS_RADIUS_PX = SEARCH_RADIUS_PX;
 export const DOUBLE_PRESS_MS = 500;
 export const DOUBLE_PRESS_PX = 5;
 
+/**
+ * True when heyo sent this click on. The user then has nothing to retry, so
+ * the press that follows is not a correction and the record cannot be a miss.
+ */
+export function wasSent(record: ClickRecord): boolean {
+  return record.fire?.outcome === 'sent';
+}
+
 export function isLabeledMiss(record: ClickRecord): boolean {
-  return !record.features.reacted && retriedNearby(record);
+  return !record.features.reacted && !wasSent(record) && retriedNearby(record);
 }
 
 /** True when a follow-up press is a real hit on a control within the miss radius, soon enough. */

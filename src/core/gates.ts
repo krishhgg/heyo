@@ -15,6 +15,12 @@ export const GATES = {
   minMissRate: 0.005,
   /** Stop if labeled misses are under this many a day. */
   minMissesPerDay: 3,
+  /** Narrow the allowlist if pages ignore more than this share of the clicks heyo sends. */
+  maxIgnoredShare: 0.1,
+  /** Turn retargeting off after more than this many wrong clicks noticed in a week. */
+  maxWrongPerWeek: 1,
+  /** Share of fires held back as a control once retargeting is on. */
+  heldShare: 0.1,
 } as const;
 
 /** Inconclusive means there is not enough evidence yet. It is never a pass. */

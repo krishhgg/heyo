@@ -1,10 +1,12 @@
 // Shadow mode. Watches plain left clicks, and for each one that lands on empty
 // space logs what was nearby, what the decision would have done, whether the
 // page reacted, and where the next press went. It changes nothing on the page.
-import { FOLLOW_UP_WINDOW_MS, MISS_RADIUS_PX } from '../../core/labels';
-import type { ClickFeatures, ClickRecord, FollowUp, PathSample } from '../../core/types';
+import { DOUBLE_PRESS_MS, FOLLOW_UP_WINDOW_MS, MISS_RADIUS_PX } from '../../core/labels';
+import type { ClickFeatures, ClickRecord, Fire, FollowUp, PathSample } from '../../core/types';
 import { decide } from '../../decision';
 import type { WorkerMessage } from '../messages';
+import { planFire } from '../plan';
+import { DEFAULT_SETTINGS, readSettings, watchSettings, type Settings } from '../settings';
 import { decisionVersion } from '../version';
 import { boxOf, findCandidates, isLabelPair, type Found } from './candidates';
 import { isDisabled, tagOf, type HasListener } from './clickable';
@@ -13,6 +15,7 @@ import { allShadowRoots, deepestAt, isWithin } from './dom';
 import { classifyHit, type Hit } from './hit';
 import { hasListener } from './listeners';
 import { BackgroundWatch, reacted, ReactionWatch } from './reaction';
+import { sendClick } from './replay';
 import { uuid } from './uuid';
 
 /** The page gets this long after the click to show a reaction. */
@@ -112,7 +115,14 @@ export function startCapture(): void {
   /** The press whose click is waiting out the settle time. */
   let settling: { press: Press; timer: number } | null = null;
   let pending: Pending | null = null;
+  /** A click heyo is about to send on, once the double-click interval has passed. */
+  let waiting: { id: string; timer: number } | null = null;
   let stopped = false;
+
+  // Until the settings load, and whenever they cannot be read, heyo only logs.
+  let settings: Settings = DEFAULT_SETTINGS;
+  void readSettings().then((loaded) => (settings = loaded));
+  watchSettings((changed) => (settings = changed));
 
   /** Caches listener answers for one press, since rings of sample points share ancestors. */
   function listenerLookup(): HasListener {
@@ -147,14 +157,17 @@ export function startCapture(): void {
     press = null;
   }
 
-  /** Logs a settled empty-space click. Pass true when the page is unloading. */
-  function finalize(unloading = false): void {
+  /**
+   * Logs an empty-space click. `cause` says why now: its settle time ran out,
+   * the user pressed again before that, or the page is unloading.
+   */
+  function finalize(cause: 'settled' | 'pressed' | 'unloading' = 'settled'): void {
     if (!settling) return;
     clearTimeout(settling.timer);
     const p = settling.press;
     settling = null;
     if (!p.empty) return;
-    const reaction = p.empty.watch.stop(unloading);
+    const reaction = p.empty.watch.stop(cause === 'unloading');
     const didReact = reacted(reaction);
     send({ type: 'count', site, field: didReact ? 'emptyReacted' : 'emptyIgnored' });
     // The send found the extension gone, reloaded or removed. Nothing more can be logged.
@@ -182,7 +195,15 @@ export function startCapture(): void {
       extensionVersion: chrome.runtime.getManifest().version,
       followUp: null,
     };
+    const plan = lone ? 'log' : planFire(settings, site, record, Math.random());
+    if (plan === 'hold') record.fire = { outcome: 'held' };
+    // A click is sent on only once its settle time has run out in peace. If the
+    // user is already pressing again, sending it would act twice.
+    if (plan === 'send' && cause === 'pressed') {
+      record.fire = { outcome: 'failed', failure: 'second-press' };
+    }
     if (!lone) send({ type: 'record', record });
+    if (plan === 'send' && cause === 'settled') sendOn(record, p);
     pending = {
       id: record.id,
       x: p.x,
@@ -192,6 +213,23 @@ export function startCapture(): void {
       scrolled: false,
       unsent: lone ? record : null,
     };
+  }
+
+  /** Sends the click on to the decision's target, now or after the double-click interval. */
+  function sendOn(record: ClickRecord, p: Press): void {
+    if (record.decision.action !== 'retarget' || !p.empty) return;
+    const { candidate: index } = record.decision;
+    const control = p.empty.found.elements[index];
+    const candidate = record.features.candidates[index];
+    const report = (fire: Fire) => send({ type: 'fire', id: record.id, fire });
+    if (!control || !candidate) return report({ outcome: 'failed', failure: 'gone' });
+    const go = () => {
+      waiting = null;
+      sendClick(control, candidate, { x: p.x, y: p.y }, report);
+    };
+    if (!settings.waitForDoubleClick) return go();
+    const wait = Math.max(0, DOUBLE_PRESS_MS - (performance.now() - p.t));
+    waiting = { id: record.id, timer: window.setTimeout(go, wait) };
   }
 
   /**
@@ -268,8 +306,14 @@ export function startCapture(): void {
     if (!event.isTrusted || event.pointerType !== 'mouse' || event.button !== 0) return;
     // A new press ends the previous click's settle time, so the page's reaction
     // to this press is not charged to that click.
-    finalize();
+    finalize('pressed');
     dropPress();
+    // A second press before the click was sent on means the user is double-clicking or retrying.
+    if (waiting) {
+      clearTimeout(waiting.timer);
+      send({ type: 'fire', id: waiting.id, fire: { outcome: 'failed', failure: 'second-press' } });
+      waiting = null;
+    }
 
     const path = event.composedPath();
     const origin = path[0];
@@ -389,7 +433,7 @@ export function startCapture(): void {
 
   /** A page that unloads during the settle time reacted by navigating. */
   function onPageHide(): void {
-    finalize(true);
+    finalize('unloading');
   }
 
   function stop(): void {
@@ -407,6 +451,7 @@ export function startCapture(): void {
     dropPress();
     settling?.press.empty?.watch.stop();
     if (settling) clearTimeout(settling.timer);
+    if (waiting) clearTimeout(waiting.timer);
   }
 
   window.addEventListener('pointerdown', onPointerDown, true);

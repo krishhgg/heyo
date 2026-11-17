@@ -1,5 +1,6 @@
 // Messages between the service worker and content scripts.
-import type { ClickRecord, FollowUp } from '../core/types';
+import type { ClickRecord, Fire, FollowUp } from '../core/types';
+import type { Settings } from './settings';
 
 /** The service worker asks a frame whether its content script is running. */
 export interface PingRequest {
@@ -34,4 +35,23 @@ export interface FollowUpMessage {
   followUp: FollowUp;
 }
 
-export type WorkerMessage = CountMessage | RecordMessage | FollowUpMessage;
+/** What heyo did about an already-sent record while retargeting was on. */
+export interface FireMessage {
+  type: 'fire';
+  id: string;
+  fire: Fire;
+}
+
+export type WorkerMessage = CountMessage | RecordMessage | FollowUpMessage | FireMessage;
+
+/** Requests from the review page. Only the service worker changes settings. */
+export type PageRequest =
+  | { type: 'setMode'; mode: Settings['mode'] }
+  | { type: 'setWaitForDoubleClick'; value: boolean }
+  | { type: 'reportWrong'; recordId: string; irreversible: boolean };
+
+export interface PageReply {
+  /** False when the request was refused, such as turning retargeting on before the gates pass. */
+  ok: boolean;
+  settings: Settings;
+}
