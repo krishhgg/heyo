@@ -123,7 +123,8 @@ test.describe('the numbers page', () => {
     await expect(row('Recovery')).toContainText('Not enough data yet');
     await expect(row('Would-be fires')).toContainText('1');
     await expect(row('Fires you reviewed')).toContainText('0 (0 wrong)');
-    await expect(page.locator('.ruler-caption')).toContainText('1 of 14 days logged');
+    await expect(row('Retries on a page that was already changing')).toContainText('0');
+    await expect(page.locator('.ruler-caption')).toHaveText('Day 1 of 14, with clicks on 1');
   });
 
   test('exports the whole log as a file', async ({ page, worker, extensionId }) => {

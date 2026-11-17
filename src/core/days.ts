@@ -15,3 +15,9 @@ export function daysBetween(from: string, to: string): number {
   };
   return Math.round((utc(to) - utc(from)) / 86_400_000);
 }
+
+/** The day `count` days after a day. */
+export function addDays(day: string, count: number): string {
+  const [year = 0, month = 1, date = 1] = day.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, date + count)).toISOString().slice(0, 10);
+}

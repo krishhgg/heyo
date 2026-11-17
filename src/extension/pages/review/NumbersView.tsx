@@ -7,6 +7,7 @@ import {
   wrongTargetGate,
   type GateStatus,
 } from '../../../core/gates';
+import { addDays, dayOf } from '../../../core/days';
 import { missRate, type Score } from '../../../core/metrics';
 import type { Log } from '../../db';
 
@@ -42,20 +43,26 @@ function Row(props: { name: string; value: string; needs: string; status?: GateS
   );
 }
 
-/** One tick per shadow-mode day. A filled tick is a day heyo saw clicks. */
-function DayRuler({ days }: { days: number }) {
+/**
+ * One tick per calendar day of shadow mode, counted from the first logged day.
+ * A tall tick is a day heyo saw clicks. A short dark tick is a day that passed with none.
+ */
+function DayRuler({ log, elapsed }: { log: Log; elapsed: number }) {
+  const active = new Set(log.counts.filter((c) => c.clicks > 0).map((c) => c.day));
+  const first = [...active].sort()[0];
   return (
-    <div class="ruler" role="img" aria-label={`${days} of ${GATES.shadowDays} days logged`}>
-      {Array.from({ length: GATES.shadowDays }, (_, i) => (
-        <span key={i} class={i < days ? 'tick on' : 'tick'} />
-      ))}
+    <div class="ruler" role="img" aria-label={`Day ${elapsed} of ${GATES.shadowDays}`}>
+      {Array.from({ length: GATES.shadowDays }, (_, i) => {
+        const on = first !== undefined && active.has(addDays(first, i));
+        return <span key={i} class={on ? 'tick on' : i < elapsed ? 'tick past' : 'tick'} />;
+      })}
     </div>
   );
 }
 
 export function NumbersView({ log, score, onExport, onDelete }: Props) {
   const [confirming, setConfirming] = useState(false);
-  const rate = missRate(log.records, log.counts);
+  const rate = missRate(log.records, log.counts, dayOf(Date.now()));
   const rateGate = missRateGate(rate);
   const recovery = recoveryGate(score);
   const wrong = wrongTargetGate(score);
@@ -71,12 +78,19 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
         <p class="sheet-note">
           A miss is a click on empty space that the page ignored, followed within 1.5 seconds by a
           click on a control within 30 px. Shadow mode runs for {GATES.shadowDays} days before this
-          is judged.
+          is judged. A page that changes on its own makes every click look answered, so a retry
+          there cannot be called a miss and is listed apart.
         </p>
-        <DayRuler days={rate.days} />
+        <DayRuler log={log} elapsed={rate.elapsedDays} />
         <p class="ruler-caption">
-          <span class="num">{Math.min(rate.days, GATES.shadowDays)}</span> of {GATES.shadowDays}{' '}
-          days logged
+          {rate.elapsedDays === 0 ? (
+            'No clicks logged yet'
+          ) : (
+            <>
+              Day <span class="num">{Math.min(rate.elapsedDays, GATES.shadowDays)}</span> of{' '}
+              {GATES.shadowDays}, with clicks on <span class="num">{rate.activeDays}</span>
+            </>
+          )}
         </p>
         <table>
           <thead>
@@ -99,6 +113,11 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
               name="Misses a day"
               value={rate.perDay === null ? 'none yet' : rate.perDay.toFixed(1)}
               needs={`${GATES.minMissesPerDay} or more`}
+            />
+            <Row
+              name="Retries on a page that was already changing"
+              value={rate.masked.toLocaleString()}
+              needs="not counted"
             />
           </tbody>
         </table>
@@ -173,7 +192,8 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
         </header>
         <p class="sheet-note">
           The log stays in this browser until you export it. An export holds the sites you clicked
-          on and short labels of nearby controls. It never holds anything you typed.
+          on and the visible names of nearby controls. heyo never reads what is in a form field, and
+          it blanks any name that repeats what a field holds.
         </p>
         <p class="log-size">
           <span class="num">{log.records.length.toLocaleString()}</span> logged clicks,{' '}

@@ -585,6 +585,10 @@ kbd {
   border-left: 1.5px solid var(--grid-major);
 }
 
+.tick.past {
+  border-left-color: var(--graphite);
+}
+
 .tick.on {
   height: 22px;
   border-left-color: var(--ink);
