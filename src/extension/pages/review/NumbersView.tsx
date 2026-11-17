@@ -36,12 +36,19 @@ function percent(value: number | null, digits = 1): string {
   return value === null ? 'none yet' : `${(100 * value).toFixed(digits)}%`;
 }
 
-function Row(props: { name: string; value: string; needs: string; status?: GateStatus }) {
+/** One measure. `needs` is the limit it has to meet. `note` says why a measure has none. */
+function Row(props: {
+  name: string;
+  value: string;
+  needs?: string;
+  note?: string;
+  status?: GateStatus;
+}) {
   return (
     <tr>
       <th scope="row">{props.name}</th>
       <td class="num">{props.value}</td>
-      <td>{props.needs}</td>
+      {props.note ? <td class="note">{props.note}</td> : <td>{props.needs}</td>}
       <td>{props.status && <Status status={props.status} />}</td>
     </tr>
   );
@@ -55,7 +62,15 @@ function DayRuler({ log, elapsed }: { log: Log; elapsed: number }) {
   const active = new Set(log.counts.filter((c) => c.clicks > 0).map((c) => c.day));
   const first = [...active].sort()[0];
   return (
-    <div class="ruler" role="img" aria-label={`Day ${elapsed} of ${GATES.shadowDays}`}>
+    <div
+      class="ruler"
+      role="img"
+      aria-label={
+        elapsed <= GATES.shadowDays
+          ? `Day ${elapsed} of ${GATES.shadowDays}`
+          : `Day ${elapsed}, past the ${GATES.shadowDays} that shadow mode runs for`
+      }
+    >
       {Array.from({ length: GATES.shadowDays }, (_, i) => {
         const on = first !== undefined && active.has(addDays(first, i));
         return <span key={i} class={on ? 'tick on' : i < elapsed ? 'tick past' : 'tick'} />;
@@ -130,8 +145,8 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
             </tr>
           </thead>
           <tbody>
-            <Row name="Clicks seen" value={rate.clicks.toLocaleString()} needs="" />
-            <Row name="Misses" value={rate.misses.toLocaleString()} needs="" />
+            <Row name="Clicks seen" value={rate.clicks.toLocaleString()} />
+            <Row name="Misses" value={rate.misses.toLocaleString()} />
             <Row
               name="Misses as a share of clicks"
               value={percentBeside(rate.rate, GATES.minMissRate)}
@@ -147,7 +162,7 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
             <Row
               name="Retries on a page that was already changing"
               value={rate.masked.toLocaleString()}
-              needs="not counted"
+              note="not counted"
             />
           </tbody>
         </table>
@@ -191,7 +206,7 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
               needs={`${100 * GATES.minRecovery}% or more, on ${GATES.minMisses} misses or more`}
               status={recovery.status}
             />
-            <Row name="Would-be fires" value={score.fires.toLocaleString()} needs="" />
+            <Row name="Would-be fires" value={score.fires.toLocaleString()} />
             <Row
               name="Fires you reviewed"
               value={`${wrong.reviewed} (${wrong.wrong} wrong)`}
@@ -200,7 +215,7 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
             <Row
               name="Fires you marked not sure"
               value={score.unsure.toLocaleString()}
-              needs="left out of the rate"
+              note="left out of the rate"
             />
             <Row
               name="Wrong-target rate, upper bound"
@@ -215,7 +230,6 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
                   ? 'none yet'
                   : `${percent(doubleShare, 1)} (${score.doublePress})`
               }
-              needs=""
             />
           </tbody>
         </table>

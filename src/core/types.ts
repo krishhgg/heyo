@@ -10,6 +10,9 @@ export type ClickSignal = 'native' | 'role' | 'tabindex' | 'cursor' | 'listener'
  * A control is an element a click can activate.
  * An opaque region is a canvas, video or iframe, where heyo cannot see what the user aimed at.
  */
+/** A logged label is cut to this many characters. */
+export const LABEL_MAX = 40;
+
 export interface Candidate {
   /** Index within the record. */
   id: number;
@@ -24,7 +27,7 @@ export interface Candidate {
   /** The type attribute of an input or button. */
   type: string | null;
   signals: ClickSignal[];
-  /** Accessible name or visible text, at most 40 characters. Never a field's value. */
+  /** Accessible name or visible text, at most LABEL_MAX characters. Never a field's value. */
   label: string;
   /** Part of the label matched text typed into a field on the page and was blanked. */
   redacted: boolean;

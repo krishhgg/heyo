@@ -1,6 +1,6 @@
 // The hand review. One would-be fire at a time, marked right, wrong or not sure.
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { Verdict } from '../../../core/types';
+import { LABEL_MAX, type Verdict } from '../../../core/types';
 import { kindOf, nameOf, plural, reviewKey, type Fire } from './data';
 import { Plate } from './Plate';
 
@@ -184,6 +184,17 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
     setAt(previous);
   };
 
+  // A mouse click leaves focus on a button with no ring to show it, and Space,
+  // pressed to scroll, would then press it again. A press made with the
+  // keyboard keeps its focus.
+  const unfocus = (event: MouseEvent) => {
+    if (event.detail > 0) (event.currentTarget as HTMLElement).blur();
+  };
+  const goBack = (event: MouseEvent) => {
+    unfocus(event);
+    back();
+  };
+
   // The key listener is added once and reads the latest handlers through a ref,
   // so a key pressed right after a render never runs a stale handler.
   const actions = useRef({ mark, back });
@@ -244,7 +255,7 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
                 you browse.
               </p>
               {live.length > 0 && (
-                <button class="ghost" onClick={back}>
+                <button class="ghost" onClick={goBack}>
                   Back to the last one <kbd>Z</kbd>
                 </button>
               )}
@@ -265,14 +276,12 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
   const noRepeat = (event: KeyboardEvent) => {
     if (event.repeat) event.preventDefault();
   };
-  // A mouse click leaves focus on the answer with no ring to show it. Space,
-  // pressed to scroll, would then mark the next click. A click made with the
-  // keyboard keeps its focus.
   const answer = (verdict: Verdict) => (event: MouseEvent) => {
-    if (event.detail > 0) (event.currentTarget as HTMLElement).blur();
+    unfocus(event);
     mark(verdict);
   };
-  const name = nameOf(picked);
+  // The capture cuts a name at a fixed length. A cut name says so.
+  const name = picked.label.length >= LABEL_MAX ? `${nameOf(picked)}…` : nameOf(picked);
 
   return (
     <section class="review">
@@ -338,15 +347,16 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
               That mark was not saved. Mark this click again.
             </p>
           )}
+          <button class="ghost" onClick={goBack} disabled={live.length === 0}>
+            Back to the last one <kbd>Z</kbd>
+          </button>
+          {/* Under the button, so the button does not move when this line comes and goes. */}
           {earlier && (
             <p class="earlier">
               You marked this <strong>{VERDICT_WORDS[earlier].toLowerCase()}</strong>. Mark it again
               to change it or to move on.
             </p>
           )}
-          <button class="ghost" onClick={back} disabled={live.length === 0}>
-            Back to the last one <kbd>Z</kbd>
-          </button>
 
           <dl class="facts">
             <dt>Also nearby</dt>

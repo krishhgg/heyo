@@ -202,6 +202,25 @@ test.describe('the review page', () => {
     });
   }
 
+  test('does not go back twice when Space follows a mouse click on Back', async ({
+    page,
+    worker,
+    extensionId,
+  }) => {
+    await openReviewWithFires(page, worker, extensionId);
+    const first = await page.locator('.target').innerText();
+    await press(page, 'y');
+    const second = await page.locator('.target').innerText();
+    await press(page, 'y');
+
+    await page.getByRole('button', { name: /Back to the last one/ }).click();
+    await expect(page.locator('.target')).toHaveText(second);
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(200);
+    await expect(page.locator('.target')).toHaveText(second);
+    expect(second).not.toBe(first);
+  });
+
   test('does not mark the next click when Space follows a mouse mark', async ({
     page,
     worker,
@@ -416,7 +435,7 @@ test.describe('the review page', () => {
       };
       expect([first.name, second.name].sort()).toEqual([
         'Save',
-        'Save the quarterly planning notes as a d',
+        'Save the quarterly planning notes as a d…',
       ]);
       expect(second.at).toEqual(first.at);
     });

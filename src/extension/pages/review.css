@@ -170,6 +170,8 @@ code {
 
 .plate-frame {
   grid-area: plate;
+  /* The stamp is sized against the drawing, so it fits a small one. */
+  container-type: inline-size;
 }
 
 .legend {
@@ -353,11 +355,11 @@ code {
   position: absolute;
   top: 50%;
   left: 50%;
-  padding: 6px 22px;
-  border: 4px solid currentColor;
+  padding: min(6px, 2.4cqw) min(22px, 8cqw);
+  border: min(4px, 1.6cqw) solid currentColor;
   border-radius: 10px;
   background: color-mix(in srgb, var(--card) 82%, transparent);
-  font-size: 44px;
+  font-size: min(44px, 15cqw);
   font-weight: 900;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -784,8 +786,8 @@ td.num {
 }
 
 .danger {
-  border-color: var(--pencil);
-  background: var(--pencil);
+  border-color: var(--pencil-deep);
+  background: var(--pencil-deep);
 }
 
 /* Not yet taking clicks, a moment after it appears. */
@@ -840,7 +842,7 @@ td.num {
   }
 
   /* The header row is gone, so the limit says what it is. */
-  td:nth-child(3):not(:empty)::before {
+  td:nth-child(3):not(:empty):not(.note)::before {
     content: 'Needs ';
     color: var(--graphite);
   }
