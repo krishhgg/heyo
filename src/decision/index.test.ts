@@ -131,6 +131,9 @@ describe('decide', () => {
       'Check out',
       'Sign-out',
       'Log off',
+      'Comment',
+      'Authorize app',
+      'Go live',
     ]) {
       const candidates = [candidate(0, 3, { label })];
       expect(decide(features({ candidates })), label).toEqual(refuse('irreversible'));
