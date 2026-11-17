@@ -174,11 +174,20 @@ export function startCapture(): void {
   }
 
   function send(message: WorkerMessage): void {
+    void sendStored(message);
+  }
+
+  /** Sends a message and says whether the worker stored what it carried. */
+  function sendStored(message: WorkerMessage): Promise<boolean> {
     try {
-      chrome.runtime.sendMessage(message).catch(() => undefined);
+      return chrome.runtime.sendMessage<WorkerMessage, boolean>(message).then(
+        (stored) => stored === true,
+        () => false,
+      );
     } catch {
       // The extension was reloaded or removed while this page stayed open.
       stop();
+      return Promise.resolve(false);
     }
   }
 
@@ -241,8 +250,8 @@ export function startCapture(): void {
     // was not for a reason, and a second send would act twice.
     const inPeace = cause === 'settled' && !acted && !p.repeat;
     if (plan === 'send' && !inPeace) record.fire = { outcome: 'failed', failure: 'second-press' };
-    if (!lone) send({ type: 'record', record });
-    if (plan === 'send' && inPeace) sendOn(record, p);
+    const stored = lone ? Promise.resolve(false) : sendStored({ type: 'record', record });
+    if (plan === 'send' && inPeace) sendOn(record, p, stored);
     pending = {
       id: record.id,
       x: p.x,
@@ -303,7 +312,7 @@ export function startCapture(): void {
   }
 
   /** Sends the click on to the decision's target, now or after the double-click interval. */
-  function sendOn(record: ClickRecord, p: Press): void {
+  function sendOn(record: ClickRecord, p: Press, stored: Promise<boolean>): void {
     if (record.decision.action !== 'retarget' || !p.empty) return;
     const { candidate: index } = record.decision;
     const control = p.empty.found.elements[index];
@@ -323,20 +332,28 @@ export function startCapture(): void {
       }
       sendClick(control, candidate, { x: p.x, y: p.y }, report);
     };
-    if (!settings.waitForDoubleClick) return go();
-    // The page is watched through the wait, as it was through the click's own
-    // settle time. If it does anything, the click it ignored was not ignored after all.
+    // The click goes out once two things are true: its record is in the log,
+    // where the user can find it and say it was wrong, and the double-click
+    // interval has passed, if the user asked heyo to wait for that. The page is
+    // watched until then, as it was through the click's own settle time. If it
+    // does anything, the click it ignored was not ignored after all.
     const watch = p.empty.watch.again();
-    const wait = Math.max(0, DOUBLE_PRESS_MS - (performance.now() - p.t));
-    const timer = window.setTimeout(() => {
-      const ended = endWaiting();
-      if (!ended) return;
-      if (ended.reacted) return report({ outcome: 'failed', failure: 'reacted' });
-      go();
-    }, wait);
+    const wait = settings.waitForDoubleClick
+      ? Math.max(0, DOUBLE_PRESS_MS - (performance.now() - p.t))
+      : 0;
+    let timer = 0;
+    const due = new Promise<void>((resolve) => (timer = window.setTimeout(resolve, wait)));
     waiting = { id: record.id, timer, watch };
     listenForKeys(true);
     window.addEventListener('beforeunload', onLeaveWhileWaiting, true);
+    void Promise.all([stored, due]).then(([inLog]) => {
+      // The user or the page did something in the meantime, and the click was dropped.
+      if (waiting?.id !== record.id) return;
+      const ended = endWaiting();
+      if (!ended || !inLog) return;
+      if (ended.reacted) return report({ outcome: 'failed', failure: 'reacted' });
+      go();
+    });
   }
 
   /**

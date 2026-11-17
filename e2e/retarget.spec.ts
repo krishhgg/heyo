@@ -703,6 +703,29 @@ test.describe('retargeting stays on only while the log passes the gates', () => 
     await expectShadow(page);
   });
 
+  test('sends nothing when the click could not be logged', async ({ page, worker }) => {
+    await turnOnRetargeting(worker);
+    await page.goto('/replay.html');
+    // Every write to the store fails, as when the disk is full.
+    await worker.evaluate(() => {
+      // The method is put back on the same prototype, so it keeps its receiver.
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const put = IDBObjectStore.prototype.put;
+      (globalThis as { mendStore?: () => void }).mendStore = () => {
+        IDBObjectStore.prototype.put = put;
+      };
+      IDBObjectStore.prototype.put = () => {
+        throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      };
+    });
+    await miss(page, 184, 116);
+    // A click heyo sent with no record of it could never be reported.
+    expect(await actionsOf(page)).toEqual([]);
+    await worker.evaluate(() => (globalThis as { mendStore?: () => void }).mendStore?.());
+    expect(await fixtureRecords(worker)).toEqual([]);
+    expect(await settingsOf(worker)).toMatchObject({ mode: 'shadow', offReason: 'error' });
+  });
+
   test('keeps a report that could not be undone, made while retargeting was off', async ({
     page,
     worker,
