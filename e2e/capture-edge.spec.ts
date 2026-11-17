@@ -123,6 +123,8 @@ test.describe('text', () => {
   }) => {
     await page.goto('/components.html');
     await page.mouse.click(1100, 700); // closes this page's menu, so later clicks get no reaction
+    // The decision refuses a click on a page that changed in the 300 ms before it.
+    await page.waitForTimeout(400);
     const slotted = await recordOf(page, worker, 804, 116); // 4 px right of the 100 px button
     expect(slotted.features.candidates[0]).toMatchObject({
       tag: 'button',
