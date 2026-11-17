@@ -21,7 +21,7 @@ Preconditions:
 
 - The Swift toolchain is installed (`swift --version`). `verify.mjs` is not used. This feature has no browser part.
 
-- **Logic.** Run `swift test` in `mac/`. It ends with `Test run with 17 tests in 4 suites passed`.
+- **Logic.** Run `swift test` in `mac/`. It ends with `Test run with 19 tests in 4 suites passed`.
 - **Permission check.** Run `swift run -c release heyo-feasibility check` in `mac/`. It prints `Accessibility permission: yes` or `no`. With `no` it prints the steps to grant it and `Nothing was measured.`
 - **The experiment.** With the permission, run `swift run -c release heyo-feasibility all --out /tmp/heyo-mac`. Each tap check prints a `PASS` or `FAIL` line, and each app prints its hit-test times. `report.md` in the folder holds the verdict.
 - **Proof.** Keep `report.md` and `report.json`. Without the permission the proof is the output of `check`, and the experiment is unverified.

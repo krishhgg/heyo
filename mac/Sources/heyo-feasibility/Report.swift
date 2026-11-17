@@ -13,7 +13,9 @@ struct Report: Codable {
         }
         let ran = Set((tap?.tests ?? []).compactMap { Verdict.Check(rawValue: $0.name) })
         return Verdict(
-            apps: latency?.map { Verdict.App(name: $0.app, isElectron: $0.isElectron, ringP95: $0.ringP95) },
+            apps: latency?.map {
+                Verdict.App(name: $0.app, isElectron: $0.isElectron, ringP95: $0.ringP95, coverage: $0.ringCoverage)
+            },
             passed: passed, ran: ran, callbackP95: tap?.callbackP95 ?? 0, budgetMs: budgetMs)
     }
 
@@ -33,14 +35,14 @@ struct Report: Codable {
         }
         if let latency {
             lines += ["", "## Accessibility hit tests", "",
-                      "| App | Electron | Answered | Timed out | Failed | Hit test p50 | p95 | max | Ring search p95 |",
-                      "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+                      "| App | Electron | Answered | Timed out | Failed | Hit test p50 | p95 | max | Ring search p95 | Ring answered |",
+                      "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
             for app in latency {
                 lines.append(String(
-                    format: "| %@ | %@ | %d | %d | %d | %.2f ms | %.2f ms | %.1f ms | %@ |",
+                    format: "| %@ | %@ | %d | %d | %d | %.2f ms | %.2f ms | %.1f ms | %@ | %.0f%% |",
                     app.app, app.isElectron ? "yes" : "no", app.answered, app.timeouts, app.errors,
                     app.hitTestP50, app.hitTestP95, app.hitTestMax,
-                    app.ringP95.map { String(format: "%.1f ms", $0) } ?? "not measured"))
+                    app.ringP95.map { String(format: "%.1f ms", $0) } ?? "not measured", app.ringCoverage * 100))
             }
         }
         if let tap {

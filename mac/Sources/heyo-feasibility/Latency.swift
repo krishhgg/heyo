@@ -25,14 +25,13 @@ struct AppLatency: Codable {
     var errors: Int
     /// Hit tests that got an answer.
     var answered: Int
-    /// The whole ring search around one point, 137 hit tests, in ms.
-    /// Nil when too few of the ring's hit tests got an answer for the time to mean anything.
+    /// The whole ring search around one point, 137 hit tests, in ms. Every search
+    /// is timed, also one whose hit tests timed out, since that time was spent.
     var ringP50: Double?
     var ringP95: Double?
+    /// Share of the ring searches' hit tests that got an answer, from 0 to 1.
+    var ringCoverage: Double
 }
-
-/// A ring search counts only when at least this share of its hit tests got an answer.
-let minAnsweredShare = 0.8
 
 func milliseconds(_ body: () -> Void) -> Double {
     let start = DispatchTime.now().uptimeNanoseconds
@@ -98,6 +97,8 @@ func measureLatency() -> [AppLatency] {
         var rings: [Double] = []
         var timeouts = 0
         var errors = 0
+        var ringTests = 0
+        var ringAnswered = 0
         var generator = SystemRandomNumberGenerator()
         for sample in 0..<60 {
             let point = CGPoint(
@@ -111,28 +112,27 @@ func measureLatency() -> [AppLatency] {
             }
             // The full ring search on every third point.
             guard sample % 3 == 0 else { continue }
-            var answered = 0
-            let ms = milliseconds {
+            rings.append(milliseconds {
                 for offset in offsets {
                     let hit = hitTest(element, at: CGPoint(x: point.x + offset.dx, y: point.y + offset.dy))
-                    if hit.result == .answered { answered += 1 }
+                    ringTests += 1
+                    if hit.result == .answered { ringAnswered += 1 }
                 }
-            }
-            // A ring that mostly failed or timed out says nothing about how long a working one takes.
-            if Double(answered) >= minAnsweredShare * Double(offsets.count) { rings.append(ms) }
+            })
         }
         let name = app.localizedName ?? "unknown"
         let one = Timing(single)
         let ring = Timing(rings)
-        say(String(format: "%@: %d of 60 hit tests answered, %d timed out, %d failed. Hit test p95 %@. Ring search p95 %@.",
+        let coverage = ringTests > 0 ? Double(ringAnswered) / Double(ringTests) : 0
+        say(String(format: "%@: %d of 60 hit tests answered, %d timed out, %d failed. Hit test p95 %@. Ring search p95 %@, with %.0f%% of its hit tests answered.",
                    name, single.count, timeouts, errors,
                    one.map { String(format: "%.2f ms", $0.p95) } ?? "not measured",
-                   ring.map { String(format: "%.1f ms", $0.p95) } ?? "not measured"))
+                   ring.map { String(format: "%.1f ms", $0.p95) } ?? "not measured", coverage * 100))
         results.append(AppLatency(
             app: name, bundle: app.bundleIdentifier ?? "", isElectron: electron,
             hitTestP50: one?.p50 ?? 0, hitTestP95: one?.p95 ?? 0, hitTestMax: one?.max ?? 0,
             timeouts: timeouts, errors: errors, answered: single.count,
-            ringP50: ring?.p50, ringP95: ring?.p95))
+            ringP50: ring?.p50, ringP95: ring?.p95, ringCoverage: coverage))
     }
     if results.isEmpty { say("No app with a window was found to measure.") }
     return results

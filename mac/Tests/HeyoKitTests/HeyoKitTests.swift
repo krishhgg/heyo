@@ -71,7 +71,7 @@ import Testing
 }
 
 @Suite struct VerdictTests {
-    let fast = [Verdict.App(name: "Safari", isElectron: false, ringP95: 12)]
+    let fast = [Verdict.App(name: "Safari", isElectron: false, ringP95: 12, coverage: 1)]
     let all = Set(Verdict.Check.allCases)
 
     @Test func everythingInsideTheLimitsIsGo() {
@@ -85,15 +85,30 @@ import Testing
 
     @Test func noMeasuredAppIsNotGo() {
         #expect(!Verdict(apps: [], passed: all, ran: all).isGo)
-        let silent = [Verdict.App(name: "Cursor", isElectron: true, ringP95: nil)]
+        let silent = [Verdict.App(name: "Cursor", isElectron: true, ringP95: nil, coverage: 0)]
         #expect(!Verdict(apps: silent, passed: all, ran: all).isGo)
     }
 
     @Test func aSlowRingSearchIsNotGo() {
-        let slow = fast + [Verdict.App(name: "Cursor", isElectron: true, ringP95: 48)]
+        let slow = fast + [Verdict.App(name: "Cursor", isElectron: true, ringP95: 48, coverage: 1)]
         let verdict = Verdict(apps: slow, passed: all, ran: all)
         #expect(!verdict.isGo)
         #expect(verdict.problems.first?.contains("Electron") == true)
+    }
+
+    @Test func anAppThatMostlyDidNotAnswerIsNotGoHoweverFastItLooks() {
+        // One quick answer among many failures must not pass for a fast app.
+        let patchy = [Verdict.App(name: "Cursor", isElectron: true, ringP95: 4, coverage: 0.05)]
+        #expect(!Verdict(apps: patchy, passed: all, ran: all).isGo)
+        let enough = [Verdict.App(name: "Cursor", isElectron: true, ringP95: 4, coverage: 0.8)]
+        #expect(Verdict(apps: enough, passed: all, ran: all).isGo)
+    }
+
+    @Test func timeSpentOnSearchesThatTimedOutStillCounts() {
+        // Every hit test timed out at 30 ms, so the ring took seconds. That is slow, not unmeasured-and-fine.
+        let stalled = [Verdict.App(name: "Cursor", isElectron: true, ringP95: 4110, coverage: 0)]
+        let verdict = Verdict(apps: stalled, passed: all, ran: all)
+        #expect(verdict.problems.count == 2)
     }
 
     @Test func aTapThatWasNotCreatedIsNotGo() {

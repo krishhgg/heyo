@@ -8,15 +8,21 @@ public struct Verdict: Equatable {
     public struct App: Equatable {
         public let name: String
         public let isElectron: Bool
-        /// Ring search time at the 95th percentile, in ms. Nil when too few queries got an answer.
+        /// Time of every ring search at the 95th percentile, in ms, timed-out ones included. Nil when none ran.
         public let ringP95: Double?
+        /// Share of the ring searches' hit tests that got an answer, from 0 to 1.
+        public let coverage: Double
 
-        public init(name: String, isElectron: Bool, ringP95: Double?) {
+        public init(name: String, isElectron: Bool, ringP95: Double?, coverage: Double) {
             self.name = name
             self.isElectron = isElectron
             self.ringP95 = ringP95
+            self.coverage = coverage
         }
     }
+
+    /// An app counts as measured only when this share of its hit tests got an answer.
+    public static let minCoverage = 0.8
 
     /// Names of the tap checks, shared by the experiment and the verdict.
     public enum Check: String, CaseIterable {
@@ -42,14 +48,14 @@ public struct Verdict: Equatable {
         var found: [String] = []
 
         if let apps {
-            let measured = apps.filter { $0.ringP95 != nil }
-            if measured.isEmpty { found.append("No app's Accessibility hit tests could be measured.") }
+            if apps.isEmpty { found.append("No app's Accessibility hit tests could be measured.") }
             for app in apps {
-                guard let p95 = app.ringP95 else {
-                    found.append("\(app.name) did not answer enough hit tests to be measured.")
-                    continue
+                // The time and the coverage are judged apart. A search that timed out
+                // took its time all the same, and a fast answer to nothing is no answer.
+                if app.coverage < Verdict.minCoverage || app.ringP95 == nil {
+                    found.append("\(app.name) answered only \(Int((app.coverage * 100).rounded()))% of its hit tests, too few to call it measured.")
                 }
-                if p95 > budgetMs {
+                if let p95 = app.ringP95, p95 > budgetMs {
                     let kind = app.isElectron ? ", an Electron app," : ""
                     found.append("The ring search in \(app.name)\(kind) took \(Int(p95.rounded())) ms at the 95th percentile, over the \(Int(budgetMs)) ms limit.")
                 }
