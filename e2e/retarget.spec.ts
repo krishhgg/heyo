@@ -323,9 +323,9 @@ test.describe('waiting out the double-click interval', () => {
     x: number,
     y: number,
   ) {
-    // A fixed short wait and no polling, so the test acts well inside the interval.
+    // A fixed short wait and no trip to the log, so the test acts well inside
+    // the interval. `outcome` checks the record afterwards.
     await clickAt(page, x, y);
-    expect(await fixtureRecords(worker)).toHaveLength(1);
   }
 
   /** What became of that miss, once the interval is over. */
@@ -379,6 +379,20 @@ test.describe('waiting out the double-click interval', () => {
   }) => {
     await waitingMiss(page, worker, 184, 116);
     // The page's own listeners never see this press. The window losing focus to the frame is the sign.
+    await page.mouse.click(560, 500);
+    expect(await outcome(page, worker)).toEqual({
+      actions: [],
+      fire: { outcome: 'failed', failure: 'second-press' },
+    });
+  });
+
+  test('sends nothing while an embedded frame holds focus', async ({ page, worker }) => {
+    // The page cancels a press on empty space, so focus stays in the frame the
+    // user was in. A press in that frame then shows nowhere on the page, not
+    // even as the window losing focus.
+    await page.goto('/replay.html?nodown');
+    await page.mouse.click(560, 500);
+    await waitingMiss(page, worker, 184, 116);
     await page.mouse.click(560, 500);
     expect(await outcome(page, worker)).toEqual({
       actions: [],

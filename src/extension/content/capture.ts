@@ -17,6 +17,7 @@ import { boxOf, findCandidates, isLabelPair, type Found } from './candidates';
 import { isDisabled, tagOf, type HasListener } from './clickable';
 import { describeUnder, labelOf, typedText } from './describe';
 import { allShadowRoots, deepestAt, isWithin } from './dom';
+import { deepActiveElement } from './fields';
 import { classifyHit, type Hit } from './hit';
 import { hasListener } from './listeners';
 import { BackgroundWatch, reacted, ReactionWatch } from './reaction';
@@ -84,6 +85,11 @@ interface Pending {
    * press shows it was a miss on a control the search did not see.
    */
   unsent: ClickRecord | null;
+}
+
+/** True for an element that embeds another page, whose input this script never sees. */
+function isFrame(element: Element | null): boolean {
+  return element instanceof HTMLIFrameElement || element instanceof HTMLFrameElement;
 }
 
 function round(value: number): number {
@@ -302,8 +308,12 @@ export function startCapture(): void {
     const go = () => {
       // Retargeting may have been turned off since the click was planned.
       if (!mayAct(settings, site)) return report({ outcome: 'failed', failure: 'off' });
-      // The user may have gone to another window in a way this script did not see.
-      if (!document.hasFocus()) return report({ outcome: 'failed', failure: 'second-press' });
+      // The user may have gone to another window in a way this script did not
+      // see. And while an embedded frame holds focus, a press or a key in it
+      // never shows here, not even as the window losing focus.
+      if (!document.hasFocus() || isFrame(deepActiveElement())) {
+        return report({ outcome: 'failed', failure: 'second-press' });
+      }
       sendClick(control, candidate, { x: p.x, y: p.y }, report);
     };
     if (!settings.waitForDoubleClick) return go();

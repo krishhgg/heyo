@@ -156,6 +156,13 @@
       // What the page does about a real click on empty space, by the words in the query string.
       const modes = new URLSearchParams(location.search);
       for (const mode of modes.keys()) document.body.classList.add(mode);
+      // ?nodown cancels a press on empty space, as pages do to keep a selection.
+      // Focus then stays where it was, in an embedded frame too.
+      if (modes.has('nodown')) {
+        document.addEventListener('mousedown', (event) => {
+          if (event.target === document.body) event.preventDefault();
+        });
+      }
       document.addEventListener('click', (event) => {
         if (!event.isTrusted || event.target !== document.body) return;
         // ?late handles the click after a wait, longer than heyo gives a page to react.
