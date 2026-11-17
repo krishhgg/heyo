@@ -14,6 +14,7 @@ import {
   codePaths,
   copyInto,
   isBetter,
+  isInside,
   runAgent,
   sandboxProfile,
   type LoopResult,
@@ -92,6 +93,14 @@ describe('codePaths', () => {
         ? [await realpath(join(root, 'node_modules'))]
         : [],
     );
+  });
+});
+
+describe('isInside', () => {
+  it('tells a folder and what lies in it from a sibling with a longer name', () => {
+    expect(isInside('/work/heyo', '/work/heyo')).toBe(true);
+    expect(isInside('/work/heyo/loop', '/work/heyo')).toBe(true);
+    expect(isInside('/work/heyo-work', '/work/heyo')).toBe(false);
   });
 });
 
@@ -228,6 +237,20 @@ describe('the loop', () => {
     expect(result.rounds[0]).toMatchObject({ kept: false });
     expect(result.rounds[0]!.note).toMatch(/rejected by the lint/);
     expect(await readFile(join(workspace, 'decision/index.ts'), 'utf8')).not.toContain('SITE');
+  });
+
+  it('goes on when the agent removes the decision folder', async () => {
+    const gone = await agent(
+      'gone',
+      `import { rmSync } from 'node:fs';\nrmSync('decision', { recursive: true });`,
+    );
+    const { workspace, result } = await loop('gone', gone, 2);
+    expect(result.rounds).toHaveLength(2);
+    expect(result.rounds[0]).toMatchObject({ kept: false });
+    expect(result.rounds[0]!.note).toMatch(/could not be read/);
+    // The best decision is put back, and the held-out split is still judged.
+    expect(await readFile(join(workspace, 'decision/index.ts'), 'utf8')).toContain('MAX_DIST');
+    expect(result.heldOut).toBeDefined();
   });
 
   it.runIf(canSandbox)('stops the agent from reading the log or editing the scorer', async () => {

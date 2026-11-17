@@ -6,7 +6,7 @@
 import { spawn } from 'node:child_process';
 import { chmod, cp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { retargetGates, wrongTargetGate } from '../src/core/gates';
 import type { Score } from '../src/core/metrics';
 import type { LogExport } from '../src/core/types';
@@ -130,10 +130,15 @@ export function sandboxProfile(hidden: string[], readOnly: string[], priv: strin
  * it depends on, which can sit outside the repo behind a link, and Node itself.
  * The agent can write none of it, or it could change how its own work is scored.
  */
+/** True when a path is a folder or lies in it. A sibling whose name starts the same way does not. */
+export function isInside(path: string, folder: string): boolean {
+  return path === folder || path.startsWith(folder + sep);
+}
+
 export async function codePaths(root: string): Promise<string[]> {
   const paths = [root, dirname(await realpath(process.execPath))];
   const packages = await realpath(join(root, 'node_modules')).catch(() => null);
-  if (packages && !packages.startsWith(`${root}/`)) paths.push(packages);
+  if (packages && !isInside(packages, root)) paths.push(packages);
   return paths;
 }
 
@@ -302,7 +307,7 @@ export async function runLoop(options: RunOptions, tools: LoopTools): Promise<Lo
   await mkdir(options.workspace, { recursive: true });
   const workspace = await realpath(options.workspace);
   const root = await realpath(tools.root);
-  if (workspace.startsWith(root)) {
+  if (isInside(workspace, root)) {
     throw new Error(
       'The workspace must be outside the repo, so the agent cannot reach the scorer.',
     );
@@ -374,9 +379,19 @@ export async function runLoop(options: RunOptions, tools: LoopTools): Promise<Lo
     const ran = await runAgent(options.agent, workspace, profile, options.minutes * 60_000);
     let kept = false;
     let line: string;
-    const problems = lintDecision(work, coreDir);
+    // An agent can leave the folder in any state, gone included. That is a
+    // rejected round like any other, and the best decision is put back.
+    let problems: Problem[] = [];
+    let unreadable: string | null = null;
+    try {
+      problems = lintDecision(work, coreDir);
+    } catch (error) {
+      unreadable = error instanceof Error ? error.message : String(error);
+    }
     if (ran.timedOut) {
       line = `stopped after ${options.minutes} minutes`;
+    } else if (unreadable !== null) {
+      line = `could not be read: ${unreadable}`;
     } else if (problems.length > 0) {
       line = `rejected by the lint:\n${problemsText(problems)}`;
     } else {
