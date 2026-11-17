@@ -2,7 +2,7 @@
 // for a control. These functions never read a field's value into the log, they
 // skip text in editable regions, and they blank out anything that matches what
 // is typed into a field on the page right now.
-import type { Under } from '../../core/types';
+import { LABEL_MAX, type Under } from '../../core/types';
 import { roleOf, tagOf } from './clickable';
 import { flatChildren } from './dom';
 import {
@@ -13,8 +13,6 @@ import {
   isTextField,
   isTextInput,
 } from './fields';
-
-export const LABEL_MAX = 40;
 
 /** Input types whose value is the developer's button text, not user input. */
 const BUTTON_INPUT_TYPES = new Set(['submit', 'button', 'reset']);

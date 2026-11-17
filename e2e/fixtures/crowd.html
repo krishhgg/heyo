@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: a crowded spot</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font:
+          13px/1.2 system-ui,
+          sans-serif;
+      }
+      button {
+        position: absolute;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0 8px;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      A click at 403, 216 is 3 px right of the long-named button. The others are
+      14, 20 and 26 px from it: near enough to be listed, far enough that the
+      decision still picks the long-named one.
+    -->
+    <button style="left: 100px; top: 200px; width: 300px; height: 32px">
+      Save the quarterly planning notes as a draft
+    </button>
+    <button style="left: 417px; top: 200px; width: 110px; height: 32px">Discard changes</button>
+    <button style="left: 380px; top: 168px; width: 60px; height: 28px">Rename</button>
+    <button style="left: 380px; top: 242px; width: 60px; height: 28px">Archive</button>
+
+    <!-- A name in wide characters, which take about twice the room of Latin ones. A click at 523, 516 is 3 px right of it. -->
+    <button style="left: 100px; top: 500px; width: 420px; height: 32px">
+      这是一个用于测试宽字符名称是否完整显示的非常长的按钮标签文字内容示例
+    </button>
+
+    <!-- A name in capitals, which are wider than their count suggests. A click at 523, 616 is 3 px right of it. -->
+    <button style="left: 100px; top: 600px; width: 420px; height: 32px">
+      VIEW WORKSPACE MANAGEMENT DOCUMENTATION
+    </button>
+  </body>
+</html>

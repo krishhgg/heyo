@@ -25,6 +25,23 @@ chrome.runtime.onMessage.addListener((message: WorkerMessage, _sender, sendRespo
   return true;
 });
 
+/** The toolbar button opens the review page, or switches to it if it is already open. */
+chrome.action.onClicked.addListener(() => {
+  void openReview();
+});
+
+async function openReview(): Promise<void> {
+  const url = chrome.runtime.getURL('review.html');
+  const open = await chrome.runtime.getContexts({ contextTypes: ['TAB'], documentUrls: [url] });
+  const existing = open[0];
+  if (existing && existing.tabId >= 0) {
+    await chrome.tabs.update(existing.tabId, { active: true });
+    await chrome.windows.update(existing.windowId, { focused: true });
+  } else {
+    await chrome.tabs.create({ url });
+  }
+}
+
 /**
  * Asks the content script in one frame of a tab whether it is running.
  * The verification skill and the end-to-end tests call this through the
@@ -48,7 +65,7 @@ async function exportLog(): Promise<LogExport> {
   };
 }
 
-const api = { pingTab, exportLog, clearLog };
+const api = { pingTab, exportLog, clearLog, openReview };
 
 export type HeyoWorkerApi = typeof api;
 

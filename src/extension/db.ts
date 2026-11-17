@@ -26,17 +26,24 @@ function done(tx: IDBTransaction): Promise<void> {
 }
 
 function open(): Promise<IDBDatabase> {
-  opening ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open(NAME, VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      db.createObjectStore('records', { keyPath: 'id' });
-      db.createObjectStore('reviews', { keyPath: ['recordId', 'candidate'] });
-      db.createObjectStore('counts', { keyPath: ['day', 'site'] });
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'));
-  });
+  if (!opening) {
+    const attempt = new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(NAME, VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        db.createObjectStore('records', { keyPath: 'id' });
+        db.createObjectStore('reviews', { keyPath: ['recordId', 'candidate'] });
+        db.createObjectStore('counts', { keyPath: ['day', 'site'] });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'));
+    });
+    // A failed open is not kept, so the next call tries again.
+    attempt.catch(() => {
+      if (opening === attempt) opening = null;
+    });
+    opening = attempt;
+  }
   return opening;
 }
 

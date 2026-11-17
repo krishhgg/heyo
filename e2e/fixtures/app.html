@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: a small app</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+        color: #222;
+        background: #fff;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 56px;
+        padding: 0 20px;
+        border-bottom: 1px solid #ddd;
+      }
+      header .spacer {
+        flex: 1;
+      }
+      .icon {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: 1px solid #bbb;
+        border-radius: 6px;
+        background: #f6f6f6;
+      }
+      .wide {
+        height: 32px;
+        padding: 0 14px;
+        border: 1px solid #bbb;
+        border-radius: 6px;
+        background: #f6f6f6;
+      }
+      main {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: 32px;
+        padding: 24px 20px;
+      }
+      nav a {
+        display: block;
+        width: max-content;
+        margin-bottom: 14px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 48px;
+        border-bottom: 1px solid #eee;
+      }
+      .row .title {
+        flex: 1;
+      }
+      .chip {
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: #e8eefc;
+        cursor: pointer;
+      }
+      canvas {
+        width: 240px;
+        height: 120px;
+        margin-top: 24px;
+        background: #f3f0e8;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <button class="icon" aria-label="Menu"></button>
+      <strong>Inbox</strong>
+      <span class="spacer"></span>
+      <button class="icon" aria-label="Search"></button>
+      <button class="icon" aria-label="Refresh"></button>
+      <button class="icon" aria-label="Settings"></button>
+      <button class="wide" id="compose">Compose</button>
+    </header>
+    <main>
+      <nav>
+        <a href="#inbox">Inbox</a>
+        <a href="#starred">Starred</a>
+        <a href="#drafts">Drafts</a>
+        <a href="#archive">Archive</a>
+      </nav>
+      <section>
+        <div class="row">
+          <input type="checkbox" aria-label="Select message" />
+          <span class="title">Quarterly numbers are in</span>
+          <span class="chip" role="button">Reply</span>
+          <button class="icon" aria-label="Archive message"></button>
+          <button class="icon" aria-label="Delete message"></button>
+        </div>
+        <div class="row">
+          <input type="checkbox" aria-label="Select message" />
+          <span class="title">Lunch on Thursday?</span>
+          <span class="chip" role="button">Reply</span>
+          <button class="icon" aria-label="Archive message"></button>
+          <button class="icon" aria-label="Delete message"></button>
+        </div>
+        <div class="row">
+          <input type="checkbox" aria-label="Select message" />
+          <span class="title">Your receipt</span>
+          <span class="chip" role="button">Reply</span>
+          <button class="icon" aria-label="Archive message"></button>
+          <button class="icon" aria-label="Delete message"></button>
+        </div>
+        <canvas id="chart"></canvas>
+      </section>
+    </main>
+  </body>
+</html>

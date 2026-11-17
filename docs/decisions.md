@@ -99,3 +99,33 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - A candidate that left the document matches a follow-up on a control with the same tag, label and box, when exactly one candidate fits. Pages re-render and replace nodes.
 - A press on a disabled control is counted at the release, since Chrome sends no click for it.
 - Record ids come from `crypto.getRandomValues`. `crypto.randomUUID` does not exist on plain HTTP pages.
+- Labels never include a field's value or text inside an editable region. A password field is always logged as "password field".
+
+## Review page
+
+- The toolbar button opens the review page in a tab. There is no popup, so the extension has one page to learn.
+- Fires are reviewed in the order of a hash of the record id. That order is random with respect to time and site and is the same on every visit, so reviewing from the front is reviewing a random sample of all would-be fires.
+- The review never shows whether the user retried. The verified wrong-target rate has to be independent of the proxy label.
+- A review judges the control the bundled decision picks now, not the one logged at click time. After a decision update the page asks again about any click whose pick changed.
+- Keys are `Y` for right, `N` for wrong, `U` for not sure and `Z` to go back. The question is worded as yes or no so the keys match it.
+- Keys are ignored for about a quarter second while the verdict stamp shows, and for another 300 ms after the next click comes up, so a double tap cannot mark a click the reviewer has not seen, however late the second tap is. With reduced motion the stamp does not move, and both waits stay. A held Enter on a focused answer marks once.
+- The review stays mounted while the numbers show, so its place and the way back to earlier marks survive a look at the numbers. Its keys do nothing meanwhile. The way back holds only clicks that are still in the log.
+- A mark that cannot be stored leaves the click on screen with a message, and the reviewer marks it again.
+- The question and the three answers sit right under the name, and the details come after. The block that holds the name has one height for every click, and a long name is set in smaller type until all of it fits in two lines. The size starts from the name's length and is then measured, because wide characters take twice the room their count suggests. So the answers are in the same place for every click, and no name is cut. The drawing is a square sized to what the window leaves, with its legend under it, or below the answers when the window is under 640 px wide. In a window at least 560 px wide and 600 px high a mark needs no scrolling. In a smaller one the next drawing is scrolled into view.
+- While a mark is being stamped the screen shows the click as it was before the mark. A fresh mark does not flash the filled button or the line that says what the click was marked.
+- The distance label in the drawing moves to one side when a neighbour sits where it would go, so it never covers a neighbour's name. With neighbours on every side it is left out, and the distance is in the text beside the drawing.
+- `Z` is never locked out, because going back marks nothing. During the stamp it keeps the click being marked on screen. During the next click's look time it goes back at once. A dropped `Z` would send the reviewer's next key to the wrong click.
+- A mouse click on an answer gives up focus afterwards. Chrome leaves focus on a clicked button without showing a ring, and Space, pressed to scroll, would mark the next click. An answer reached with the keyboard keeps its focus.
+- A failed export or delete says so and leaves the log as it was. A store that failed to open is opened again on the next try.
+- The note above the export says what the capture does with field contents: it looks at them to blank names that repeat them and stores none of them. It also says a name can still hold something personal.
+- Every number shown beside a limit gets as many decimals as it takes to tell it from that limit. At 299 marks with none wrong the bound reads 0.997%, and 124 recovered of 250 reads 49.6%.
+- The review screen shows only how many fires are marked and how many wait. The count the gate needs and the wrong marks are on the numbers page. On the review screen one wrong mark would visibly raise the target from 299 to 473, which is a reason to press something else.
+- The three answers are drawn with the same weight. A filled button marks only what the reviewer chose earlier, on a click they came back to.
+- With few marks the wrong-target bound can sit over 1% and still come down as marks come in. The page words that as "Fail so far" until 299 fires are marked, the sample the plan asks for with none wrong, and as "Fail" from then on.
+- A name of exactly 40 characters gets an ellipsis whether or not the capture cut it. The log does not say which, and a cut name shown as whole would be the worse mistake.
+- The numbers page lists the fires marked not sure. They are left out of the wrong-target rate, and they are the hard cases, so a large count has to be visible.
+- An export reads the store again first, so it holds clicks logged since the page was opened.
+- The drawing shows 56 px on each side of the click at a fixed scale, so distances look the same from one click to the next.
+- The page uses one bundled typeface, Recursive (OFL). The extension makes no network calls, so the font ships inside it.
+- Preact renders the page. It is 4 KB and keeps the review state readable.
+- Deleting the log takes two clicks, and the second button names how much it deletes. `Keep the log` appears where the first click landed and the delete button takes no click for 600 ms, so a double-click cannot delete anything.
