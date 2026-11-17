@@ -1,0 +1,133 @@
+// The decision. A pure function from the logged features of one empty-space
+// click to a target or a refusal. The agent loop edits this module and nothing else.
+import { distanceToRect } from '../core/geometry';
+import type { Candidate, ClickFeatures, Decision, PathSample, RefuseReason } from '../core/types';
+
+/** The nearest control must be within this many px. */
+const MAX_DIST = 12;
+
+/** The runner-up must be at least this many times as far as the nearest control. */
+const MARGIN = 2;
+
+/** Floor for the margin test, so two controls a hair apart stay ambiguous. */
+const MIN_DIST = 1;
+
+/** A press that moved more than this many px is a drag. */
+const DRAG_PX = 4;
+
+/** A press held longer than this many ms is a long press. */
+const LONG_PRESS_MS = 500;
+
+/** The cursor moved away when it ended this many px farther from the control than it started. */
+const AWAY_PX = 2;
+
+/** Labels that suggest a click the user cannot take back. */
+const IRREVERSIBLE = [
+  'delete',
+  'remove',
+  'erase',
+  'discard',
+  'destroy',
+  'trash',
+  'wipe',
+  'clear',
+  'reset',
+  'revoke',
+  'deactivate',
+  'uninstall',
+  'overwrite',
+  'pay',
+  'buy',
+  'purchase',
+  'order',
+  'checkout',
+  'donate',
+  'transfer',
+  'withdraw',
+  'bid',
+  'sell',
+  'book',
+  'reserve',
+  'subscribe',
+  'unsubscribe',
+  'upgrade',
+  'send',
+  'submit',
+  'post',
+  'publish',
+  'tweet',
+  'repost',
+  'invite',
+  'like',
+  'follow',
+  'unfollow',
+  'vote',
+  'upvote',
+  'downvote',
+  'block',
+  'report',
+  'ban',
+  'leave',
+  'sign out',
+  'log out',
+  'logout',
+  'confirm',
+  'approve',
+  'reject',
+  'decline',
+  'accept',
+  'agree',
+  'merge',
+  'deploy',
+];
+
+const IRREVERSIBLE_PATTERN = new RegExp(`\\b(${IRREVERSIBLE.join('|')})\\b`, 'i');
+
+function refuse(reason: RefuseReason): Decision {
+  return { action: 'refuse', reason };
+}
+
+function looksIrreversible(candidate: Candidate): boolean {
+  return IRREVERSIBLE_PATTERN.test(candidate.label);
+}
+
+function inside(sample: PathSample, candidate: Candidate): boolean {
+  return distanceToRect(sample, candidate.rect) === 0;
+}
+
+/**
+ * True when the cursor path argues against the control. That is when the cursor
+ * started nearer the control than it ended, unless it came from elsewhere and
+ * passed over the control on the way, which is an overshoot.
+ */
+function movedAway(path: PathSample[], candidate: Candidate): boolean {
+  const first = path[0];
+  if (!first) return false;
+  const startDist = distanceToRect(first, candidate.rect);
+  if (startDist + AWAY_PX >= candidate.dist) return false;
+  const overshot = startDist > 0 && path.some((sample) => inside(sample, candidate));
+  return !overshot;
+}
+
+export function decide(features: ClickFeatures): Decision {
+  if (features.reacted) return refuse('reacted');
+  if (!features.focused) return refuse('unfocused');
+  if (features.press.move > DRAG_PX) return refuse('drag');
+  if (features.press.ms > LONG_PRESS_MS) return refuse('long-press');
+
+  const byDist = [...features.candidates].sort((a, b) => a.dist - b.dist);
+  const nearest = byDist[0];
+  if (!nearest) return refuse('no-candidate');
+  if (nearest.dist > MAX_DIST) return refuse('too-far');
+  // An opaque region competes for the click but can never be the target.
+  if (nearest.kind === 'opaque') return refuse('ambiguous');
+  const runnerUp = byDist[1];
+  if (runnerUp && runnerUp.dist < MARGIN * Math.max(nearest.dist, MIN_DIST)) {
+    return refuse('ambiguous');
+  }
+  if (nearest.disabled) return refuse('disabled');
+  if (looksIrreversible(nearest)) return refuse('irreversible');
+  if (movedAway(features.path, nearest)) return refuse('path');
+
+  return { action: 'retarget', candidate: nearest.id };
+}
