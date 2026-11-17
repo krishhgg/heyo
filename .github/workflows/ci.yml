@@ -70,3 +70,12 @@ jobs:
           path: |
             playwright-report
             test-results
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift build
+        working-directory: mac
+      - run: swift test
+        working-directory: mac

@@ -29,3 +29,4 @@ Each feature file starts with an H1 title and one paragraph on the user-visible 
 
 - [Extension loads](./extension-loads.md) covers loading the unpacked build and the content script running on a page.
 - [Shadow capture](./shadow-capture.md) covers logging near misses, follow-ups, page reactions, hits, click counts and the privacy rules.
+- [Mac feasibility experiment](./mac-experiment.md) covers the Swift package's tests, its permission check and how to run the experiment.

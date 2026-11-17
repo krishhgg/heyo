@@ -57,7 +57,7 @@ One person may log only a handful of labeled misses a day (my guess), so start t
 
 ## The macOS app
 
-An active event tap catches left mouse presses, and [`AXUIElementCopyElementAtPosition`](https://developer.apple.com/documentation/applicationservices/1462077-axuielementcopyelementatposition) hit-tests the click point and a ring around it. The tap rewrites the event's location so the app receives a real click (unverified).
+An active event tap catches left mouse presses, and [`AXUIElementCopyElementAtPosition`](https://developer.apple.com/documentation/applicationservices/1462077-axuielementcopyelementatposition) hit-tests the click point and a ring around it. The tap rewrites the event's location so the app receives a real click (unverified). A press is rewritten when it happens, before anyone knows whether a drag follows, so rewriting is only usable if a drag that starts at a near miss still starts where the user pressed. The experiment checks that.
 
 - A sandboxed app cannot use the Accessibility privilege ([Apple DTS](https://developer.apple.com/forums/thread/780626)), so it ships outside the Mac App Store with Developer ID.
 - It cannot let the click land and watch for a reaction, so it decides first. A tap callback can only pass, change or delete an event, not pause it ([Apple](https://developer.apple.com/documentation/coregraphics/cgeventtapcallback)). So for a candidate miss it would drop the press and post the press and release on the target once the user lets go (unverified). That delays the click by the user's own press time, and movement in between has to become a normal drag again. A title-bar drag that starts beside the close button is the hard case. Run this as a small experiment before committing to Mac retargeting.
