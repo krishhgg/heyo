@@ -87,8 +87,11 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
             'No clicks logged yet'
           ) : (
             <>
-              Day <span class="num">{Math.min(rate.elapsedDays, GATES.shadowDays)}</span> of{' '}
-              {GATES.shadowDays}, with clicks on <span class="num">{rate.activeDays}</span>
+              Day <span class="num">{rate.elapsedDays}</span>
+              {rate.elapsedDays <= GATES.shadowDays
+                ? ` of ${GATES.shadowDays}`
+                : `, past the ${GATES.shadowDays} that shadow mode runs for`}
+              . Clicks on <span class="num">{rate.activeDays}</span> of them.
             </>
           )}
         </p>
