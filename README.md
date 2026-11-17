@@ -11,7 +11,7 @@ heyo is a Chrome extension. It starts in shadow mode, where it only logs what it
 
 ## Install
 
-You need Node 22 or later and Google Chrome.
+You need Node 26 or later and Google Chrome.
 
 ```bash
 git clone https://github.com/krishhgg/heyo && cd heyo && npm ci && npm run install:chrome
@@ -43,7 +43,7 @@ After two weeks, Numbers says whether misses are common enough to go on: at leas
 
 When the gates pass you can turn retargeting on. heyo then clicks the control you aimed for, on the sites in [src/extension/allowlist.ts](src/extension/allowlist.ts) only. A site gets on that list with a scripted near miss in `e2e/live/` that makes the intended action happen exactly once.
 
-If heyo clicks something you did not mean, open the Retargeting tab and mark that click wrong. It turns itself off after a wrong click that could not be undone, or more than one in a week.
+If heyo clicks something you did not mean, open the Retargeting tab and mark that click wrong. It turns itself off after a wrong click that could not be undone, after more than one in a week, and whenever your log stops passing the gates, such as after you delete it.
 
 ## Score a log
 

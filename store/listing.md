@@ -59,7 +59,7 @@ heyo sends a mouse click that landed on empty space to the nearby control the us
 
 **Permission justification: storage**
 
-heyo stores its settings there, such as whether retargeting is on, so that the scripts running in pages can read them.
+heyo stores its settings there, such as whether retargeting is on and when the user reported a wrong click, so that the scripts running in pages can read them.
 
 **Permission justification: host permissions (content scripts on all sites)**
 
