@@ -18,8 +18,12 @@ export interface Settings {
    * that could not be undone.
    */
   offReason: null | 'gates' | 'wrong-clicks' | 'irreversible';
-  /** The wrong clicks the user reported: which click, and when. One entry a click. */
-  wrongReports: { id: string; t: number }[];
+  /**
+   * The wrong clicks the user reported: which click, when, and whether it
+   * could not be undone. One entry a click. A report is dropped after a week,
+   * except one that could not be undone, which stays until it is taken back.
+   */
+  wrongReports: { id: string; t: number; irreversible?: boolean }[];
   /**
    * The version of the decision the gates last passed with. Retargeting acts
    * only under that version, so a page that loads a new decision after an
@@ -31,7 +35,11 @@ export interface Settings {
    * tests and verification drives set this, to allow their fixture pages.
    */
   testHosts: string[];
-  /** A share of fires to hold back in place of the product's. Only tests set this, to make runs repeatable. */
+  /**
+   * A share of fires to hold back in place of the product's. Only tests set
+   * this, to make runs repeatable. The scoring still counts a held miss as
+   * ten, the product's share, whatever this says.
+   */
   testHeldShare: number | null;
 }
 

@@ -628,6 +628,69 @@ test.describe('retargeting stays on only while the log passes the gates', () => 
     expect(settings).toMatchObject({ mode: 'shadow', offReason: 'wrong-clicks' });
   });
 
+  test('turns off when the log cannot be read after a mark was stored', async ({
+    page,
+    worker,
+    extensionId,
+    context,
+  }) => {
+    await turnOnRetargeting(worker);
+    await page.goto('/replay.html');
+    await miss(page, 184, 116);
+    const [sent] = await fixtureRecords(worker);
+    const review = await context.newPage();
+    await review.goto(`chrome-extension://${extensionId}/review.html`);
+
+    // Writes still work and every read of the store fails, as when the store is damaged.
+    await worker.evaluate(() => {
+      // The method is put back on the same prototype, so it keeps its receiver.
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const getAll = IDBObjectStore.prototype.getAll;
+      (globalThis as { mendStore?: () => void }).mendStore = () => {
+        IDBObjectStore.prototype.getAll = getAll;
+      };
+      IDBObjectStore.prototype.getAll = () => {
+        throw new DOMException('The store is not available.', 'UnknownError');
+      };
+    });
+    const reply = await review.evaluate(
+      (mark) =>
+        chrome.runtime.sendMessage<unknown, { ok: boolean }>({ type: 'review', review: mark }),
+      { recordId: sent!.id, candidate: 0, verdict: 'wrong', t: Date.now() },
+    );
+    expect(reply.ok).toBe(false);
+    // The wrong mark is in the log, so retargeting may not stay on unjudged.
+    expect(await settingsOf(worker)).toMatchObject({ mode: 'shadow', offReason: 'gates' });
+    await worker.evaluate(() => (globalThis as { mendStore?: () => void }).mendStore?.());
+    await expectShadow(page);
+  });
+
+  test('keeps a report that could not be undone, made while retargeting was off', async ({
+    page,
+    worker,
+    extensionId,
+    context,
+  }) => {
+    await turnOnRetargeting(worker, { reviewed: 700 });
+    await page.goto('/replay.html');
+    await miss(page, 184, 116);
+    const [sent] = await fixtureRecords(worker);
+    await worker.evaluate(() => heyo.setMode('shadow'));
+    await worker.evaluate((id) => heyo.reportWrong(id, true), sent!.id);
+    // heyo did not turn retargeting off, so it gives no reason for that.
+    const settings = await settingsOf(worker);
+    expect(settings).toMatchObject({ mode: 'shadow', offReason: null });
+    expect(settings.wrongReports).toMatchObject([{ id: sent!.id, irreversible: true }]);
+
+    // The tab still warns before the user turns it on again, until the report is taken back.
+    const review = await context.newPage();
+    await review.goto(`chrome-extension://${extensionId}/review.html`);
+    await review.getByRole('button', { name: /Retargeting/ }).click();
+    await expect(review.locator('.warning')).toContainText('could not be undone');
+    await review.getByRole('button', { name: 'Not wrong' }).click();
+    await expect(review.locator('.warning')).toHaveCount(0);
+  });
+
   test('keeps both of two wrong reports sent at once', async ({
     page,
     worker,
@@ -780,6 +843,29 @@ test.describe('the retargeting tab', () => {
       offReason: null,
       wrongReports: [],
     });
+  });
+
+  test('marks a site over the line only once it has 20 sent clicks', async ({
+    page,
+    worker,
+    extensionId,
+  }) => {
+    const sentOn = (site: string, count: number) =>
+      passingLog(count).records.map((r) => ({
+        ...r,
+        site,
+        followUp: null,
+        fire: { outcome: 'sent' as const, reacted: false },
+      }));
+    const records = [...sentOn('few.example', 19), ...sentOn('many.example', 20)];
+    await worker.evaluate((log) => heyo.importLog(log), { records, reviews: [], counts: [] });
+    await page.goto(`chrome-extension://${extensionId}/review.html`);
+    await page.getByRole('button', { name: 'Retargeting' }).click();
+    const few = page.locator('.shares li', { hasText: 'few.example' });
+    const many = page.locator('.shares li', { hasText: 'many.example' });
+    await expect(few).toContainText('19 of 19 changed nothing');
+    await expect(few.locator('.status')).toHaveCount(0);
+    await expect(many.locator('.status')).toHaveText('over 10%');
   });
 
   test('says why when heyo turned retargeting off by itself', async ({

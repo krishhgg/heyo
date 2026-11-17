@@ -53,7 +53,7 @@ const ALLOWED_GLOBALS = new Set([
 const LOCALE_MEMBER = /^(toLocale\w*|localeCompare)$/;
 
 /** Modules a decision may import, besides its own files. */
-const ALLOWED_IMPORTS = new Set(['../core/geometry', '../core/types']);
+export const ALLOWED_IMPORTS = new Set(['../core/geometry', '../core/types']);
 
 /** Names that reach outside the function: I/O, time, randomness and the global object. */
 const FORBIDDEN_NAMES = new Set([

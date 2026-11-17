@@ -74,10 +74,32 @@ function flashBadge(tabId: number | undefined): void {
   );
 }
 
-/** True when the local log passes both data gates in front of retargeting. */
+/**
+ * True when the local log passes both data gates in front of retargeting. A
+ * log that cannot be read has not passed.
+ */
 async function gatesPass(): Promise<boolean> {
-  const log = await readLog();
-  return retargetGates(score(log.records, log.reviews, decide)).pass;
+  try {
+    const log = await readLog();
+    return retargetGates(score(log.records, log.reviews, decide)).pass;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Runs one job, and turns retargeting off if the job fails. A job can fail
+ * after it has changed the log, such as a mark that was stored before a read
+ * went wrong, and retargeting does not stay on over a log nobody judged again.
+ */
+async function orShadow<T>(job: () => Promise<T>): Promise<T> {
+  try {
+    return await job();
+  } catch (error) {
+    const settings = await readSettings().catch(() => null);
+    if (settings?.mode !== 'shadow') await writeSettings({ mode: 'shadow', offReason: 'gates' });
+    throw error;
+  }
 }
 
 /**
@@ -90,9 +112,7 @@ async function gatesPass(): Promise<boolean> {
 async function enforce(): Promise<Settings> {
   const settings = await readSettings();
   if (settings.mode !== 'retarget') return settings;
-  // A log that cannot be read has not passed.
-  const pass = await gatesPass().catch(() => false);
-  if (!pass) return writeSettings({ mode: 'shadow', offReason: 'gates' });
+  if (!(await gatesPass())) return writeSettings({ mode: 'shadow', offReason: 'gates' });
   if (settings.gatedWith === decisionVersion) return settings;
   return writeSettings({ gatedWith: decisionVersion });
 }
@@ -117,6 +137,11 @@ async function sentClick(recordId: string, candidate?: number): Promise<ClickRec
   return candidate === undefined || candidate === record.decision.candidate ? record : null;
 }
 
+/** How many of the reports were made in the last week. */
+function thisWeek(reports: Settings['wrongReports'], now: number): number {
+  return reports.filter((r) => r.t > now - WEEK_MS).length;
+}
+
 /**
  * Applies the turn-off rules after a mark, and stores the reports. Retargeting
  * turns off after a wrong click that could not be undone, after more than one
@@ -128,30 +153,42 @@ async function settle(
   reported: boolean,
   irreversible: boolean,
 ): Promise<Settings> {
+  const now = Date.now();
   const before = await readSettings();
+  const tooMany = thisWeek(wrongReports, now) > GATES.maxWrongPerWeek;
   let change: Partial<Settings> = { wrongReports };
-  // heyo says why it turned retargeting off only when it did. A report made
-  // while retargeting was already off changes no reason.
   if (before.mode === 'retarget') {
+    // heyo says why it turned retargeting off only when it did.
     if (irreversible) {
       change = { ...change, mode: 'shadow', offReason: 'irreversible' };
-    } else if (reported && wrongReports.length > GATES.maxWrongPerWeek) {
+    } else if (reported && tooMany) {
       change = { ...change, mode: 'shadow', offReason: 'wrong-clicks' };
     } else if (!(await gatesPass())) {
       change = { ...change, mode: 'shadow', offReason: reported ? 'wrong-clicks' : 'gates' };
     }
-  } else if (wrongReports.length === 0 && before.wrongReports.length > 0) {
-    // Every report was taken back, so the reason that named them goes too.
-    const named = before.offReason === 'wrong-clicks' || before.offReason === 'irreversible';
-    if (named) change = { ...change, offReason: null };
+  } else if (before.offReason === 'irreversible') {
+    // The reason goes when the report that gave it is taken back.
+    if (!wrongReports.some((r) => r.irreversible)) change = { ...change, offReason: null };
+  } else if (before.offReason === 'wrong-clicks') {
+    if (!tooMany && (await gatesPass())) change = { ...change, offReason: null };
   }
   return writeSettings(change);
 }
 
-/** This week's reports, with one for this click if it has none yet. */
-function withReport(reports: Settings['wrongReports'], id: string, now: number) {
-  const recent = reports.filter((r) => r.t > now - WEEK_MS);
-  return recent.some((r) => r.id === id) ? recent : [...recent, { id, t: now }];
+/**
+ * The reports that still count, with one for this click if it has none yet.
+ * A report older than a week is dropped, unless its click could not be undone.
+ */
+function withReport(
+  reports: Settings['wrongReports'],
+  id: string,
+  now: number,
+  irreversible: boolean,
+): Settings['wrongReports'] {
+  const kept = reports.filter((r) => r.irreversible || r.t > now - WEEK_MS);
+  const old = kept.find((r) => r.id === id);
+  if (!old) return [...kept, irreversible ? { id, t: now, irreversible } : { id, t: now }];
+  return irreversible ? kept.map((r) => (r === old ? { ...r, irreversible } : r)) : kept;
 }
 
 /**
@@ -167,7 +204,7 @@ async function reportWrong(recordId: string, irreversible: boolean): Promise<Pag
     return { ok: false, settings: await readSettings() };
   }
   await putReview({ recordId, candidate: record.decision.candidate, verdict: 'wrong', t: now });
-  const reports = withReport((await readSettings()).wrongReports, recordId, now);
+  const reports = withReport((await readSettings()).wrongReports, recordId, now, irreversible);
   return { ok: true, settings: await settle(reports, true, irreversible) };
 }
 
@@ -183,7 +220,7 @@ async function mark(review: Review): Promise<PageReply> {
   const sent = (await sentClick(review.recordId, review.candidate)) !== null;
   const wrong = sent && review.verdict === 'wrong';
   let reports = before;
-  if (wrong) reports = withReport(before, review.recordId, now);
+  if (wrong) reports = withReport(before, review.recordId, now, false);
   else if (sent) reports = before.filter((r) => r.id !== review.recordId);
   return { ok: true, settings: await settle(reports, wrong, false) };
 }
@@ -226,13 +263,13 @@ chrome.runtime.onMessage.addListener(
     if (PAGE_REQUESTS.has(message.type)) {
       // The settings and the marks change only at the request of one of the extension's own pages.
       if (!sender.url?.startsWith(chrome.runtime.getURL(''))) return false;
-      void inTurn(() => answer(message as PageRequest))
+      void inTurn(() => orShadow(() => answer(message as PageRequest)))
         .catch(async () => ({ ok: false, settings: await readSettings() }))
         .then(sendResponse);
       return true;
     }
     // Answering after the write keeps the worker alive until the write is done.
-    void inTurn(() => store(message as WorkerMessage, sender.tab?.id)).then(
+    void inTurn(() => orShadow(() => store(message as WorkerMessage, sender.tab?.id))).then(
       () => sendResponse(true),
       () => sendResponse(false),
     );

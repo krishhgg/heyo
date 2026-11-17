@@ -57,6 +57,10 @@ function targetOf(record: ClickRecord): string {
 export function RetargetView({ log, score, settings, request }: Props) {
   const gates = retargetGates(score);
   const on = settings.mode === 'retarget';
+  // A report of a click that could not be undone is worth its warning also
+  // when it was made while retargeting was off.
+  const undone = settings.wrongReports.some((report) => report.irreversible);
+  const reason = settings.offReason ?? (undone ? ('irreversible' as const) : null);
   const sites = sitesOf(settings);
   // The latest mark counts, as in the gate. A mark changed to right on the Review tab is not wrong.
   const verdicts = verdictsOf(log.reviews);
@@ -105,13 +109,13 @@ export function RetargetView({ log, score, settings, request }: Props) {
               ? 'Both gates pass on your log. Turning this on lets heyo click the control you aimed for, on the sites below only.'
               : 'Retargeting stays locked until both gates pass on your own log. Keep browsing in shadow mode and mark the would-be fires on the Review tab.'}
         </p>
-        {settings.offReason && !on && (
+        {reason && !on && (
           <p class="warning">
-            {OFF_REASONS[settings.offReason]}
+            {reason === 'irreversible' && settings.offReason !== 'irreversible'
+              ? 'You reported a wrong click that could not be undone.'
+              : OFF_REASONS[reason]}
             {/* Advice about the switch only when the switch can be used. */}
-            {settings.offReason === 'irreversible' &&
-              gates.pass &&
-              ' Think twice before turning it on again.'}
+            {reason === 'irreversible' && gates.pass && ' Think twice before turning it on again.'}
           </p>
         )}
         <table>
@@ -133,7 +137,7 @@ export function RetargetView({ log, score, settings, request }: Props) {
               </td>
               <td>
                 {100 * GATES.minRecovery}% or more, on {GATES.minMisses} misses or more. A miss held
-                back as a control counts as {1 / GATES.heldShare}
+                back as a control counts as {1 / GATES.heldShare}.
               </td>
               <td>
                 <span class={`status status-${gates.recovery.status}`}>
