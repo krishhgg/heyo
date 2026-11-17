@@ -134,6 +134,7 @@ export type RefuseReason =
   | 'disabled'
   | 'unlabeled'
   | 'irreversible'
+  | 'rest'
   | 'path';
 
 export type Decision =

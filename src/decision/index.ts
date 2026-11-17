@@ -68,12 +68,18 @@ const IRREVERSIBLE = [
   'reserve',
   'subscribe',
   'unsubscribe',
+  'subscription',
+  'booking',
+  'reservation',
+  'payment',
+  'close account',
   'upgrade',
   'send',
   'submit',
   'post',
   'publish',
   'tweet',
+  'retweet',
   'repost',
   'invite',
   'like',
@@ -175,7 +181,7 @@ export function decide(features: ClickFeatures): Decision {
   if (nearest.label === '') return refuse('unlabeled');
   if (looksIrreversible(nearest)) return refuse('irreversible');
   // A click from a cursor at rest is not the end of an aimed movement.
-  if (reach(features.path) < MIN_REACH) return refuse('path');
+  if (reach(features.path) < MIN_REACH) return refuse('rest');
   if (movedAway(features.path, nearest)) return refuse('path');
 
   return { action: 'retarget', candidate: nearest.id };

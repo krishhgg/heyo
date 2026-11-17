@@ -89,6 +89,22 @@ describe('decide', () => {
       const candidates = [candidate(0, 3, { label })];
       expect(decide(features({ candidates })), label).toEqual(refuse('irreversible'));
     }
+    // The noun forms, which name the thing a harmless-looking verb acts on.
+    for (const label of [
+      'Cancel subscription',
+      'Cancel booking',
+      'Cancel reservation',
+      'Make payment',
+      'Close account',
+      'Retweet',
+    ]) {
+      const candidates = [candidate(0, 3, { label })];
+      expect(decide(features({ candidates })), label).toEqual(refuse('irreversible'));
+    }
+    // A word that only starts like one on the list is left alone.
+    expect(decide(features({ candidates: [candidate(0, 3, { label: 'Close' })] }))).toEqual(
+      retarget(0),
+    );
     const blanked = [candidate(0, 3, { label: 'Search for …', redacted: true })];
     expect(decide(features({ candidates: blanked }))).toEqual(refuse('irreversible'));
     // A label of 40 characters may have been cut, with the word that matters past the cut:
@@ -122,21 +138,21 @@ describe('decide', () => {
     });
 
     it('refuses when the cursor was at rest, since a miss ends a movement', () => {
-      expect(decide(features({ candidates, path: [] }))).toEqual(refuse('path'));
-      expect(decide(features({ candidates, path: path(0, 0) }))).toEqual(refuse('path'));
-      expect(decide(features({ candidates, path: path(-1.5, 0) }))).toEqual(refuse('path'));
+      expect(decide(features({ candidates, path: [] }))).toEqual(refuse('rest'));
+      expect(decide(features({ candidates, path: path(0, 0) }))).toEqual(refuse('rest'));
+      expect(decide(features({ candidates, path: path(-1.5, 0) }))).toEqual(refuse('rest'));
       expect(decide(features({ candidates, path: path(-2, 0) }))).toEqual(retarget(0));
     });
 
     it('reads a path of one sample by how far that sample was', () => {
       // A cursor that arrived just inside the 300 ms leaves a single sample.
       expect(decide(features({ candidates, path: path(-2) }))).toEqual(retarget(0));
-      expect(decide(features({ candidates, path: path(-1.5) }))).toEqual(refuse('path'));
+      expect(decide(features({ candidates, path: path(-1.5) }))).toEqual(refuse('rest'));
     });
 
     it('does not take the jitter of a resting hand for a movement', () => {
       // A pixel back and forth covers 4 px and never leaves the click point's side.
-      expect(decide(features({ candidates, path: path(0, -1, 0, -1, 0) }))).toEqual(refuse('path'));
+      expect(decide(features({ candidates, path: path(0, -1, 0, -1, 0) }))).toEqual(refuse('rest'));
     });
 
     it('refuses when the cursor moved away from the control', () => {
