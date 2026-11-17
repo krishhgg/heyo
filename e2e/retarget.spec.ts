@@ -87,6 +87,15 @@ test.describe('a near miss with retargeting on', () => {
     expect(fire).toEqual(sent);
   });
 
+  test('puts the cursor in a text field that is out of the Tab order', async ({ page, worker }) => {
+    await page.evaluate(() => document.getElementById('field')!.setAttribute('tabindex', '-1'));
+    // The decision refuses a click on a page that changed in the 300 ms before it.
+    await page.waitForTimeout(400);
+    const { fire } = await nearMiss(page, worker, 784, 116);
+    await expect(page.locator('#field')).toBeFocused();
+    expect(fire).toEqual(sent);
+  });
+
   test('opens a details element once', async ({ page, worker }) => {
     const { actions, fire } = await nearMiss(page, worker, 984, 110);
     expect(actions).toEqual(['details']);
@@ -661,6 +670,29 @@ test.describe('retargeting stays on only while the log passes the gates', () => 
     expect(reply.ok).toBe(false);
     // The wrong mark is in the log, so retargeting may not stay on unjudged.
     expect(await settingsOf(worker)).toMatchObject({ mode: 'shadow', offReason: 'error' });
+    await worker.evaluate(() => (globalThis as { mendStore?: () => void }).mendStore?.());
+    await expectShadow(page);
+  });
+
+  test('turns off when asked to turn on again over a log that cannot be read', async ({
+    page,
+    worker,
+  }) => {
+    await turnOnRetargeting(worker);
+    await worker.evaluate(() => {
+      // The method is put back on the same prototype, so it keeps its receiver.
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const getAll = IDBObjectStore.prototype.getAll;
+      (globalThis as { mendStore?: () => void }).mendStore = () => {
+        IDBObjectStore.prototype.getAll = getAll;
+      };
+      IDBObjectStore.prototype.getAll = () => {
+        throw new DOMException('The store is not available.', 'UnknownError');
+      };
+    });
+    // Retargeting is on already. The request is refused, and may not leave it on.
+    const reply = await worker.evaluate(() => heyo.setMode('retarget'));
+    expect(reply).toMatchObject({ ok: false, settings: { mode: 'shadow', offReason: 'gates' } });
     await worker.evaluate(() => (globalThis as { mendStore?: () => void }).mendStore?.());
     await expectShadow(page);
   });

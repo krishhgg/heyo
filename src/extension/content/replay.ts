@@ -68,7 +68,11 @@ function fire(target: Element, type: string, at: Point, buttons: number): boolea
 /** The nearest element from `from` up to `control` that takes keyboard focus. */
 function focusable(from: Element, control: Element): HTMLElement | null {
   for (let node: Element | null = from; node; node = parentOf(node)) {
-    if (node instanceof HTMLElement && node.tabIndex >= 0) return node;
+    // A negative tabindex takes an element out of the Tab order and leaves it
+    // focusable by a click, which is what this is.
+    if (node instanceof HTMLElement && (node.tabIndex >= 0 || node.hasAttribute('tabindex'))) {
+      return node;
+    }
     if (node === control) break;
   }
   return null;

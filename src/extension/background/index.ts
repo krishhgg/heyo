@@ -123,7 +123,10 @@ async function setMode(mode: Settings['mode']): Promise<PageReply> {
     return { ok: true, settings: await writeSettings({ mode, offReason: null }) };
   }
   const before = await readSettings();
-  if (!(await gatesPass())) return { ok: false, settings: before };
+  // A refusal also turns retargeting off if it was on. The request may come
+  // while it is on already, and a log that does not pass, or cannot be read,
+  // is no log to stay on over.
+  if (!(await gatesPass())) return { ok: false, settings: await enforce() };
   // The user has seen the warning about a click that could not be undone and
   // turned retargeting on all the same, so it is not shown again.
   const wrongReports = before.wrongReports.map(({ id, t }) => ({ id, t }));
