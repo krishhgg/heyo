@@ -46,7 +46,7 @@ A decision that returns anything other than a refusal or a logged control fails 
 
 ## The synthetic log
 
-`npm run synth` simulates one person clicking through made-up sites for 12 weeks. Because the generator knows what every click was for, it writes a review mark for every candidate of every record. That stands in for the hand review.
+`npm run synth` simulates one person clicking through made-up sites for 24 weeks. Because the generator knows what every click was for, it writes a review mark for every candidate of every record. That stands in for the hand review.
 
 Every number in `ASSUMPTIONS` in `synth/generate.ts` is a guess about behavior. Two matter most:
 

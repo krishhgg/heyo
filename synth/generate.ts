@@ -37,7 +37,9 @@ export interface SynthOptions {
 
 export const DEFAULT_OPTIONS: SynthOptions = {
   seed: 1,
-  days: 84,
+  // 24 weeks. The wrong-target gate needs about a thousand held-out fires to
+  // tell a rate near 0.25% from 1%, and a shorter log does not hold that many.
+  days: 168,
   sites: 40,
   clicksPerDay: 800,
   start: Date.UTC(2026, 7, 3, 16),
