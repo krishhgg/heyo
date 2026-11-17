@@ -145,3 +145,14 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - The synthetic generator's behavioral numbers are guesses and live in one `ASSUMPTIONS` object. The share of deliberate clicks that land beside a control is 0.5%. The synthetic wrong-target rate follows almost directly from it.
 - Synthetic review marks cover every candidate of every record, so any decision can be scored without new reviews.
 - In the synthetic layouts many rows of controls touch with no gap, and a lone control is the most common scene. Real toolbars and lists mostly have touching hit boxes, so a miss between two neighbors is rarer than a miss off the end of a row.
+
+## Agent loop
+
+- The agent command is any shell command, run once per round in the workspace. The loop does not depend on one agent product.
+- The agent runs under macOS `sandbox-exec` with a profile that denies reads of the log files and the runner's folder, and denies writes to the repo. The plan asks for a scorer and labels that are read-only and outside the workspace, and a test split the agent never reads. The sandbox enforces both.
+- The agent gets the train split and its review marks. Acceptance is judged on the same split. The held-out split is judged once, after the last round, and the agent is never told the result, so it cannot tune against it round by round.
+- "Better" puts the ceiling first, as the plan makes it a pass or fail gate. Above the ceiling a lower upper bound on the wrong-target rate is better. Under it, higher recovery is better.
+- A change that is not better is undone, so every round starts from the best decision so far.
+- The lint is an AST check, not a text search. It limits numbers to 3 significant digits, strings to short lower-case keywords, and bans hostnames, selectors, URLs, paths, I/O, time and randomness. It also type-checks the decision against the repo's core, so reading a field the features do not hold is an error.
+- CI runs the lint on `src/decision`, so a hand edit is held to the same rules as the agent.
+- `--apply` copies the best decision into `src/decision` only when both held-out gates pass. A person still reads the diff before it ships.
