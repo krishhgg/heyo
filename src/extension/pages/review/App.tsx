@@ -3,12 +3,15 @@ import { score as scoreLog } from '../../../core/metrics';
 import type { Review, Verdict } from '../../../core/types';
 import { decide } from '../../../decision';
 import { clearLog, putReview, readLog, type Log } from '../../db';
+import type { PageReply, PageRequest } from '../../messages';
+import { DEFAULT_SETTINGS, readSettings, watchSettings, type Settings } from '../../settings';
 import { decisionVersion } from '../../version';
 import { firesOf, reviewKey, toExport, verdictsOf, type Fire } from './data';
 import { NumbersView } from './NumbersView';
+import { RetargetView } from './RetargetView';
 import { ReviewView } from './ReviewView';
 
-type View = 'review' | 'numbers';
+type View = 'review' | 'numbers' | 'retarget';
 
 function download(name: string, text: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
@@ -23,6 +26,12 @@ export function App() {
   const [log, setLog] = useState<Log | null>(null);
   const [unread, setUnread] = useState(false);
   const [view, setView] = useState<View>('review');
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+
+  useEffect(() => {
+    void readSettings().then(setSettings);
+    watchSettings(setSettings);
+  }, []);
 
   const reload = useCallback(() => {
     void readLog().then(
@@ -94,11 +103,23 @@ export function App() {
 
   const waiting = fires.filter((f) => !verdicts.has(reviewKey(f))).length;
 
+  // Only the service worker changes settings. It checks the gates before turning retargeting on.
+  const request = async (message: PageRequest) => {
+    const reply = await chrome.runtime.sendMessage<PageRequest, PageReply>(message);
+    setSettings(reply.settings);
+    reload();
+  };
+  const retargeting = settings.mode === 'retarget';
+
   return (
     <main class="page">
       <header class="top">
         <h1 class="wordmark">heyo</h1>
-        <p class="mode">Shadow mode. heyo is logging and changes nothing on any page.</p>
+        <p class="mode">
+          {retargeting
+            ? `Retargeting is on for ${settings.allowlist.length} ${settings.allowlist.length === 1 ? 'site' : 'sites'}. Everywhere else heyo only logs.`
+            : 'Shadow mode. heyo is logging and changes nothing on any page.'}
+        </p>
         <nav class="tabs" aria-label="Sections">
           <button class="tab" aria-current={view === 'review'} onClick={() => setView('review')}>
             Review
@@ -106,6 +127,14 @@ export function App() {
           </button>
           <button class="tab" aria-current={view === 'numbers'} onClick={() => setView('numbers')}>
             Numbers
+          </button>
+          <button
+            class="tab"
+            aria-current={view === 'retarget'}
+            onClick={() => setView('retarget')}
+          >
+            Retargeting
+            {retargeting && <span class="count num">on</span>}
           </button>
         </nav>
       </header>
@@ -120,6 +149,9 @@ export function App() {
       </div>
       {view === 'numbers' && (
         <NumbersView log={log} score={score} onExport={onExport} onDelete={onDelete} />
+      )}
+      {view === 'retarget' && (
+        <RetargetView log={log} score={score} settings={settings} request={request} />
       )}
     </main>
   );

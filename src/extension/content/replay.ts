@@ -9,8 +9,13 @@ import { isDisabled, tagOf } from './clickable';
 import { allShadowRoots, elementAt, parentOf } from './dom';
 import { reacted, ReactionWatch } from './reaction';
 
-/** The page gets this long to react to the click heyo sent. */
-const SETTLE_MS = 50;
+/**
+ * The page gets this long to show a reaction to the click heyo sent. It is
+ * longer than the 50 ms given to the user's own click, because this number only
+ * feeds the share of sent clicks that pages ignore, and many handlers answer
+ * after a short wait of their own.
+ */
+const SETTLE_MS = 400;
 
 /** The control must still be within this many px of where it was logged. */
 const MOVED_PX = 2;

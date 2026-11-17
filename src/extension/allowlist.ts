@@ -9,7 +9,11 @@ export interface AllowedSite {
   tested: string;
 }
 
-export const ALLOWLIST: AllowedSite[] = [];
+export const ALLOWLIST: AllowedSite[] = [
+  { host: 'en.wikipedia.org', tested: '2026-11-17' },
+  { host: 'news.ycombinator.com', tested: '2026-11-17' },
+  { host: 'developer.mozilla.org', tested: '2026-11-17' },
+];
 
 /** True when retargeting may act on a page of this site. */
 export function isAllowed(site: string, hosts: readonly string[]): boolean {

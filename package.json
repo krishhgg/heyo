@@ -21,7 +21,8 @@
     "synth": "node scorer/cli.mjs synth",
     "scripted": "node scripted/cli.mjs",
     "loop": "node loop/cli.mjs run",
-    "lint:decision": "node loop/cli.mjs lint src/decision"
+    "lint:decision": "node loop/cli.mjs lint src/decision",
+    "e2e:live": "playwright test --config playwright.live.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

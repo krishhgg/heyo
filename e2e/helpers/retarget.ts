@@ -2,8 +2,8 @@ import type { Page, Worker } from '@playwright/test';
 import { candidate, hit, record } from '../../src/core/testing';
 import type { ClickRecord, LogExport, Review } from '../../src/core/types';
 
-/** Longer than the settle time of the user's click plus the settle time of the click heyo sends. */
-export const SENT_MS = 250;
+/** Longer than the settle time of the user's click plus the 400 ms heyo watches the click it sends. */
+export const SENT_MS = 600;
 
 /**
  * A log that passes both gates in front of retargeting: 320 labeled misses the

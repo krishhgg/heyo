@@ -192,17 +192,36 @@ test.describe('waiting out the double-click interval', () => {
   test('sends the click on only after the interval', async ({ page, worker }) => {
     await clickAt(page, 184, 116);
     const early = await actionsOf(page);
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(1100);
     const [record] = await fixtureRecords(worker);
     expect(record!.fire?.outcome).toBe('sent');
     expect(early).toEqual([]);
     expect(await actionsOf(page)).toEqual(['plain']);
   });
 
+  test('still opens a popup and a file picker after the interval', async ({
+    page,
+    worker,
+    context,
+  }) => {
+    // Chrome allows these only for a short time after a real press. Half a second later it still does.
+    const popup = context.waitForEvent('page', { timeout: 4000 }).catch(() => null);
+    await clickAt(page, 784, 216);
+    await page.waitForTimeout(1100);
+    expect(await actionsOf(page)).toEqual(['popup']);
+    expect(await popup).not.toBeNull();
+
+    const chooser = page.waitForEvent('filechooser', { timeout: 4000 }).catch(() => null);
+    await clickAt(page, 184, 310);
+    await page.waitForTimeout(1100);
+    expect(await chooser).not.toBeNull();
+    expect((await fixtureRecords(worker)).map((r) => r.fire?.outcome)).toEqual(['sent', 'sent']);
+  });
+
   test('sends nothing when a second press comes first', async ({ page, worker }) => {
     await arrive(page, 184, 116);
     await page.mouse.click(184, 116, { clickCount: 2, delay: 80 });
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(1200);
     expect(await actionsOf(page)).toEqual([]);
     const records = await fixtureRecords(worker);
     expect(records[0]!.fire).toEqual({ outcome: 'failed', failure: 'second-press' });
@@ -210,7 +229,7 @@ test.describe('waiting out the double-click interval', () => {
 
   test('sends nothing when the control moved in the meantime', async ({ page, worker }) => {
     await clickAt(page, 984, 316); // 4 px right of Mover, which jumps away 200 ms later
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(1200);
     const [record] = await fixtureRecords(worker);
     expect(await actionsOf(page)).toEqual([]);
     expect(record!.fire).toEqual({ outcome: 'failed', failure: 'moved' });
@@ -282,5 +301,88 @@ test.describe('a wrong click report', () => {
       ok: true,
       settings: { mode: 'shadow', offReason: 'irreversible' },
     });
+  });
+});
+
+test.describe('the retargeting tab', () => {
+  test('keeps the switch locked until the gates pass', async ({ page, extensionId }) => {
+    await page.goto(`chrome-extension://${extensionId}/review.html`);
+    await page.getByRole('button', { name: 'Retargeting' }).click();
+    await expect(page.getByRole('heading', { name: 'Retargeting is off' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Turn retargeting on' })).toBeDisabled();
+    await expect(page.getByRole('row', { name: /^Recovery/ })).toContainText('Not enough data yet');
+    await expect(page.locator('.mode')).toContainText('Shadow mode');
+  });
+
+  test('turns retargeting on and off once the gates pass', async ({
+    page,
+    worker,
+    extensionId,
+  }) => {
+    await worker.evaluate((log) => heyo.importLog(log), passingLog());
+    await worker.evaluate(() => heyo.setAllowlist(['127.0.0.1']));
+    await page.goto(`chrome-extension://${extensionId}/review.html`);
+    await page.getByRole('button', { name: 'Retargeting' }).click();
+    await expect(page.getByRole('row', { name: /^Wrong-target rate/ })).toContainText('Pass');
+
+    await page.getByRole('button', { name: 'Turn retargeting on' }).click();
+    await expect(page.getByRole('heading', { name: 'Retargeting is on' })).toBeVisible();
+    await expect(page.locator('.mode')).toContainText('Retargeting is on for 1 site');
+    expect(await worker.evaluate(() => heyo.readSettings())).toMatchObject({ mode: 'retarget' });
+
+    await page.getByRole('button', { name: 'Turn retargeting off' }).click();
+    await expect(page.getByRole('heading', { name: 'Retargeting is off' })).toBeVisible();
+    expect(await worker.evaluate(() => heyo.readSettings())).toMatchObject({ mode: 'shadow' });
+  });
+
+  test('lists sent clicks and takes a wrong-click report', async ({
+    page,
+    worker,
+    extensionId,
+    context,
+  }) => {
+    await turnOnRetargeting(worker, { reviewed: 700 });
+    await page.goto('/replay.html');
+    await miss(page, 384, 110); // the hash link
+
+    const review = await context.newPage();
+    await review.goto(`chrome-extension://${extensionId}/review.html`);
+    await review.getByRole('button', { name: /Retargeting/ }).click();
+    await expect(review.getByRole('row', { name: /^Sent on/ })).toContainText('1');
+    const fire = review.locator('.fires li');
+    await expect(fire).toContainText('Hash link');
+
+    await fire.getByRole('button', { name: 'Wrong', exact: true }).click();
+    await expect(fire).toContainText('Marked wrong');
+    await expect(review.getByRole('row', { name: /^Wrong-target rate/ })).toContainText('1 wrong');
+    const log = await worker.evaluate(() => heyo.exportLog());
+    expect(log.reviews.filter((r) => r.verdict === 'wrong')).toHaveLength(1);
+  });
+
+  test('says why when heyo turned retargeting off by itself', async ({
+    page,
+    worker,
+    extensionId,
+    context,
+  }) => {
+    await turnOnRetargeting(worker, { reviewed: 700 });
+    await page.goto('/replay.html');
+    await miss(page, 384, 110);
+
+    const review = await context.newPage();
+    await review.goto(`chrome-extension://${extensionId}/review.html`);
+    await review.getByRole('button', { name: /Retargeting/ }).click();
+    await review.getByRole('button', { name: 'Wrong, and it could not be undone' }).click();
+    await expect(review.getByRole('heading', { name: 'Retargeting is off' })).toBeVisible();
+    await expect(review.locator('.warning')).toContainText('could not be undone');
+  });
+
+  test('sets the double-click wait', async ({ page, worker, extensionId }) => {
+    await page.goto(`chrome-extension://${extensionId}/review.html`);
+    await page.getByRole('button', { name: 'Retargeting' }).click();
+    await page.getByRole('checkbox').check();
+    await expect
+      .poll(() => worker.evaluate(() => heyo.readSettings()))
+      .toMatchObject({ waitForDoubleClick: true });
   });
 });
