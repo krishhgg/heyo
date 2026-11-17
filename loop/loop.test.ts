@@ -35,7 +35,7 @@ async function loop(name: string, command: string, rounds = 1) {
       cli,
       'run',
       ...['--log', logFile, '--agent', command, '--rounds', String(rounds)],
-      ...['--workspace', workspace],
+      ...['--workspace', workspace, '--decision', join(root, 'loop/fixtures/decision')],
     ]);
   } catch {
     // The command exits 1 when a held-out gate does not pass, which these runs expect.

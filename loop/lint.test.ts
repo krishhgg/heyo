@@ -33,6 +33,11 @@ describe('the decision lint', () => {
     expect(lintDecision(shipped, coreDir)).toEqual([]);
   });
 
+  it('passes the simple decision the loop tests start from', () => {
+    const fixture = fileURLToPath(new URL('./fixtures/decision', import.meta.url));
+    expect(lintDecision(fixture, coreDir)).toEqual([]);
+  });
+
   it('passes a small rule with keywords and round numbers', () => {
     const source = body(
       `const words = ['delete', 'sign out'];

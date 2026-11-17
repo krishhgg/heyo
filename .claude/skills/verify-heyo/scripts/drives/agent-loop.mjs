@@ -59,6 +59,9 @@ export async function drive({ evidence, log }) {
       '2',
       '--workspace',
       workspace,
+      // Start from the simple decision in loop/fixtures, not the shipped one.
+      '--decision',
+      join(root, 'loop/fixtures/decision'),
     ];
     const output = await run(process.execPath, [join(root, 'loop/cli.mjs'), ...args]).catch(
       (e) => e,
