@@ -33,7 +33,7 @@ export default tseslint.config(
   },
   {
     // Drives pass functions to worker.evaluate and page.evaluate, which run in the browser.
-    files: ['.claude/skills/verify-heyo/scripts/**/*.mjs'],
+    files: ['.claude/skills/verify-heyo/scripts/**/*.mjs', 'scripts/store-shots.mjs'],
     languageOptions: { globals: { ...globals.browser, chrome: 'readonly', heyo: 'readonly' } },
   },
   prettier,

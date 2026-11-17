@@ -262,3 +262,10 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - After a click is sent on, the toolbar button shows an arrow on that tab for 2.5 seconds. It appears when the click's outcome is logged, about 400 ms after the click, and a second click starts the 2.5 seconds again. Nothing is drawn on the page, so the cue cannot break a page or be seen by it.
 - The sent events' screen coordinates are the window's position plus the point in the page. They leave out the height of the browser's toolbar.
 - The extension now asks for the `storage` permission, to keep its settings where content scripts can read them. It has no host permissions and makes no network calls.
+
+## Launch
+
+- No release is tagged. Publishing is the owner's step, like the upload to the Chrome Web Store. `git tag v0.1.0 && git push origin v0.1.0` runs the release workflow, which builds the zip and attaches it to a GitHub release.
+- The privacy policy lists what heyo reads and does not keep as well as what it stores. A first draft said heyo never reads form fields, and it does, in memory, to blank typed text out of the names it logs.
+- The store listing asks for the Accessibility category and starts as Unlisted, so the listing can be checked before it is public.
+- The store screenshots and the promo tile are made by a script from the built extension, so they can be retaken whenever the pages change.
