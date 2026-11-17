@@ -39,7 +39,7 @@ npm run verify -- run <feature> --headed
 npm run verify -- run <feature> --video  # also records a .webm into the evidence folder
 ```
 
-Each drive is a script in `scripts/drives/<feature>.mjs` that exports `drive(session)`. The session has:
+Each drive is a script in `.claude/skills/verify-heyo/scripts/drives/<feature>.mjs` that exports `drive(session)`. The session has:
 
 - `page`, a Playwright page in a browser that has the extension loaded
 - `worker`, the extension's service worker. Call the extension's own API with `worker.evaluate(() => heyo.<method>(...))`
@@ -71,8 +71,8 @@ Never kill Chromium by process name. Other work on this machine may be using it.
 
 ## Helpers
 
-- `scripts/verify.mjs` is the only entry point. `npm run verify -- <args>` calls it.
-- `scripts/drives/*.mjs` are the per-feature drives.
+- `.claude/skills/verify-heyo/scripts/verify.mjs` is the only entry point. `npm run verify -- <args>` calls it.
+- `.claude/skills/verify-heyo/scripts/drives/*.mjs` are the per-feature drives.
 - `e2e/helpers/extension.ts` launches Chromium with the extension. The Playwright tests and the drives share it.
 - `e2e/server.mjs` serves the fixture pages.
 
