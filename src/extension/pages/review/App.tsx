@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
-import { wrongTargetGate } from '../../../core/gates';
 import { score as scoreLog } from '../../../core/metrics';
 import type { Review, Verdict } from '../../../core/types';
 import { decide } from '../../../decision';
@@ -22,10 +21,17 @@ function download(name: string, text: string): void {
 
 export function App() {
   const [log, setLog] = useState<Log | null>(null);
+  const [unread, setUnread] = useState(false);
   const [view, setView] = useState<View>('review');
 
   const reload = useCallback(() => {
-    void readLog().then(setLog);
+    void readLog().then(
+      (read) => {
+        setLog(read);
+        setUnread(false);
+      },
+      () => setUnread(true),
+    );
   }, []);
 
   // The log grows while the user browses in other tabs. Read it again on return.
@@ -45,7 +51,20 @@ export function App() {
     [log?.records, log?.reviews],
   );
 
-  if (!log || !score) return <main class="page" aria-busy="true" />;
+  if (!log || !score) {
+    if (!unread) return <main class="page" aria-busy="true" />;
+    return (
+      <main class="page">
+        <div class="empty" role="alert">
+          <h2>The log could not be read</h2>
+          <p>Nothing was changed. The browser did not hand over heyo's local store.</p>
+          <button class="primary" onClick={reload}>
+            Try again
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   const onVerdict = async (fire: Fire, verdict: Verdict) => {
     const review = { recordId: fire.record.id, candidate: fire.picked.id, verdict, t: Date.now() };
@@ -59,9 +78,12 @@ export function App() {
     );
   };
 
-  const onExport = () => {
+  const onExport = async () => {
+    // Read the store again, so the file holds what was logged since this page last looked.
+    const stored = await readLog();
+    setLog(stored);
     const day = new Date().toISOString().slice(0, 10);
-    const exported = toExport(log, chrome.runtime.getManifest().version, decisionVersion);
+    const exported = toExport(stored, chrome.runtime.getManifest().version, decisionVersion);
     download(`heyo-log-${day}.json`, `${JSON.stringify(exported, null, 2)}\n`);
   };
 
@@ -93,7 +115,6 @@ export function App() {
           active={view === 'review'}
           fires={fires}
           verdicts={verdicts}
-          needed={wrongTargetGate(score).needed}
           onVerdict={onVerdict}
         />
       </div>

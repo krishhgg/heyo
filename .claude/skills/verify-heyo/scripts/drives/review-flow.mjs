@@ -83,6 +83,7 @@ export async function drive({ page, context, worker, baseUrl, evidence, log }) {
   assert.equal(exported.format, 'heyo-log');
   assert.equal(exported.records.length, names.length);
   assert.deepEqual(exported.records, stored.records, 'the export holds what the extension stored');
+  assert.deepEqual(exported.reviews, stored.reviews, 'the export holds the marks as stored');
 
   // The latest mark for each click, by the label of the control it judged.
   const latest = {};

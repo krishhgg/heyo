@@ -69,12 +69,27 @@ export function toExport(log: Log, extensionVersion: string, decisionVersion: st
   };
 }
 
+/** Input types that are a kind of control with a name of their own. */
+const INPUT_KINDS: Record<string, string> = {
+  submit: 'button',
+  button: 'button',
+  reset: 'button',
+  image: 'button',
+  checkbox: 'checkbox',
+  radio: 'radio button',
+  range: 'slider',
+  file: 'file picker',
+};
+
 /** A plain-words name for the kind of control a candidate is. */
 export function kindOf(candidate: Candidate): string {
   const { tag, role, type, signals } = candidate;
   if (role) return role;
   if (tag === 'a') return 'link';
-  if (tag === 'input') return type && type !== 'text' ? `${type} field` : 'text field';
+  if (tag === 'input') {
+    if (!type || type === 'text') return 'text field';
+    return INPUT_KINDS[type] ?? `${type} field`;
+  }
   if (tag === 'textarea') return 'text field';
   if (tag === 'select') return 'dropdown';
   if (tag === 'button' || tag === 'summary' || tag === 'label') return tag;
@@ -83,20 +98,32 @@ export function kindOf(candidate: Candidate): string {
   return tag;
 }
 
+/** A count with its noun, singular for one: "1 click", "4 clicks". */
+export function plural(count: number, noun: string): string {
+  return `${count.toLocaleString()} ${noun}${count === 1 ? '' : 's'}`;
+}
+
 export function nameOf(candidate: Candidate): string {
   return candidate.label || `unnamed ${kindOf(candidate)}`;
 }
 
 /**
- * A share to two decimals, or to as many as it takes to tell it from a limit
- * it sits right beside. With 299 marks and none wrong the bound is 0.997%,
- * which two decimals would show as the 1.00% it has to stay under.
+ * A number with as many decimals as it takes to tell it from a limit it sits
+ * right beside, starting from `digits`. Rounded to one decimal, 2.96 misses a
+ * day would read as the 3.0 it falls short of.
  */
-export function percentBeside(value: number | null, limit: number): string {
-  if (value === null) return 'none yet';
-  for (let digits = 2; digits < 6; digits++) {
-    const shown = (100 * value).toFixed(digits);
-    if (shown !== (100 * limit).toFixed(digits) || value === limit) return `${shown}%`;
+export function beside(value: number, limit: number, digits: number): string {
+  for (let d = digits; d < digits + 4; d++) {
+    if (value.toFixed(d) !== limit.toFixed(d) || value === limit) return value.toFixed(d);
   }
-  return `${(100 * value).toFixed(6)}%`;
+  return value.toFixed(digits + 4);
+}
+
+/**
+ * A share as a percentage, told apart from its limit in the same way. With 299
+ * marks and none wrong the bound is 0.997%, which two decimals would show as
+ * the 1.00% it has to stay under.
+ */
+export function percentBeside(value: number | null, limit: number, digits = 2): string {
+  return value === null ? 'none yet' : `${beside(100 * value, 100 * limit, digits)}%`;
 }

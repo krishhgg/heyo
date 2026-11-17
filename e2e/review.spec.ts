@@ -25,14 +25,13 @@ test.describe('the review page', () => {
     await openReviewWithFires(page, worker, extensionId);
 
     await expect(page.getByRole('button', { name: /Review/ })).toContainText('3');
-    await expect(page.locator('.progress-text')).toContainText('0 of 299 reviewed');
-    await expect(page.locator('.progress-text')).toContainText('3 waiting');
+    await expect(page.locator('.progress-text')).toHaveText('0 marked · 3 waiting');
 
     const seen: string[] = [];
     for (let i = 0; i < 3; i++) {
       seen.push(await page.locator('.target').innerText());
       await page.keyboard.press('y');
-      await expect(page.locator('.progress-text')).toContainText(`${i + 1} of 299 reviewed`);
+      await expect(page.locator('.progress-text')).toContainText(`${i + 1} marked`);
       // Keys are ignored while the stamp shows, so a double tap cannot mark an unseen click.
       await expect(page.locator('.stamp')).toHaveCount(0);
     }
@@ -57,9 +56,15 @@ test.describe('the review page', () => {
       await page.keyboard.press(key);
       await expect(page.locator('.stamp')).toHaveCount(0);
     }
-    await expect(page.locator('.progress-text')).toContainText('2 of 473 reviewed');
-    await expect(page.locator('.progress-text')).toContainText('1 wrong');
-    await expect(page.locator('.progress-text')).toContainText('1 not sure');
+    // The review screen says only how far along the pile is, never what the marks add up to.
+    await expect(page.locator('.progress-text')).toHaveText('3 marked · 0 waiting');
+    await expect(page.locator('.review')).not.toContainText(/299|473/);
+
+    await page.getByRole('button', { name: 'Numbers' }).click();
+    const row = (name: string) => page.getByRole('row', { name: new RegExp(`^${name}`) });
+    await expect(row('Fires you reviewed')).toContainText('2 (1 wrong)');
+    await expect(row('Fires you reviewed')).toContainText('473 with this many wrong');
+    await expect(row('Fires you marked not sure')).toContainText('1');
 
     const log = await readLog(worker);
     const byLabel = Object.fromEntries(
@@ -82,9 +87,12 @@ test.describe('the review page', () => {
     await expect(page.locator('.target')).toHaveText(first);
     await expect(page.getByRole('button', { name: /No, wrong/ })).toHaveClass(/chosen/);
 
+    await expect(page.locator('.earlier')).toHaveText(/You marked this wrong/);
+
     await page.keyboard.press('y');
-    await expect(page.locator('.progress-text')).toContainText('1 of 299 reviewed');
-    await expect(page.locator('.progress-text')).toContainText('0 wrong');
+    await expect(page.locator('.stamp')).toHaveCount(0);
+    await expect(page.locator('.progress-text')).toContainText('1 marked');
+    expect((await readLog(worker)).reviews.map((r) => r.verdict)).toEqual(['right']);
   });
 
   test('keeps its place and its way back while the numbers are showing', async ({
@@ -118,7 +126,15 @@ test.describe('the review page', () => {
     await expect(page.locator('.stamp')).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Numbers' }).click();
-    await expect(page.locator('.log-size')).toContainText('1 review marks');
+    await expect(page.locator('.log-size')).toContainText('1 review mark');
+
+    // The exported file holds what the store holds.
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Export the log' }).click(),
+    ]);
+    const exported = JSON.parse(await readFile(await download.path(), 'utf8')) as LogExport;
+    expect(exported.reviews).toEqual((await readLog(worker)).reviews);
     expect((await readLog(worker)).reviews).toHaveLength(1);
   });
 
@@ -128,7 +144,16 @@ test.describe('the review page', () => {
     await page.keyboard.press('y');
     await page.keyboard.press('y', { delay: 20 });
     await expect(page.locator('.stamp')).toHaveCount(0);
-    await expect(page.locator('.progress-text')).toContainText('1 of 299 reviewed');
+    await expect(page.locator('.progress-text')).toContainText('1 marked');
+    expect((await readLog(worker)).reviews).toHaveLength(1);
+  });
+
+  test('ignores a double tap with motion on, too', async ({ page, worker, extensionId }) => {
+    await openReviewWithFires(page, worker, extensionId);
+    await page.keyboard.press('y');
+    await page.keyboard.press('y', { delay: 20 });
+    await expect(page.locator('.stamp')).toHaveCount(0);
+    await expect(page.locator('.progress-text')).toContainText('1 marked');
     expect((await readLog(worker)).reviews).toHaveLength(1);
   });
 
@@ -245,13 +270,30 @@ test.describe('the numbers page', () => {
     expect((await readLog(worker)).records).toHaveLength(4);
 
     await page.getByRole('button', { name: 'Delete the log' }).click();
+    await expect(page.getByRole('button', { name: 'Keep the log' })).toBeFocused();
     await page.getByRole('button', { name: /Delete 4 clicks and all marks/ }).click();
     await expect(page.locator('.log-size')).toContainText('0 logged clicks');
+    await expect(page.getByRole('button', { name: 'Delete the log' })).toBeFocused();
     const log = await readLog(worker);
     expect(log.records).toEqual([]);
     expect(log.reviews).toEqual([]);
     expect(log.counts).toEqual([]);
   });
+});
+
+test('a double-click on Delete the log keeps the log', async ({ page, worker, extensionId }) => {
+  await openReviewWithFires(page, worker, extensionId);
+  await page.getByRole('button', { name: 'Numbers' }).click();
+
+  await page.getByRole('button', { name: 'Delete the log' }).dblclick();
+  await expect(page.getByRole('button', { name: 'Delete the log' })).toBeVisible();
+  expect((await readLog(worker)).records).toHaveLength(4);
+
+  // A click on the delete button right as it appears does nothing either.
+  await page.getByRole('button', { name: 'Delete the log' }).click();
+  // Forced, because Playwright would otherwise wait for the button to take clicks.
+  await page.getByRole('button', { name: /Delete 4 clicks/ }).click({ force: true });
+  expect((await readLog(worker)).records).toHaveLength(4);
 });
 
 test('the toolbar button opens the review page once and returns to it after that', async ({

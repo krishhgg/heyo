@@ -1,7 +1,7 @@
 // The hand review. One would-be fire at a time, marked right, wrong or not sure.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Verdict } from '../../../core/types';
-import { kindOf, nameOf, reviewKey, type Fire } from './data';
+import { kindOf, nameOf, plural, reviewKey, type Fire } from './data';
 import { Plate } from './Plate';
 
 /**
@@ -22,8 +22,6 @@ interface Props {
   /** Every would-be fire, in review order. */
   fires: Fire[];
   verdicts: Map<string, Verdict>;
-  /** Reviewed fires the 1% gate needs, given the wrong targets found so far. */
-  needed: number;
   onVerdict: (fire: Fire, verdict: Verdict) => Promise<void>;
 }
 
@@ -57,12 +55,17 @@ function ViewportMap({ fire }: { fire: Fire }) {
       aria-hidden="true"
     >
       <rect x="0.5" y="0.5" width={width - 1} height={height - 1} rx="2" />
-      <circle cx={(width * point.x) / viewport.w} cy={(height * point.y) / viewport.h} r="2.4" />
+      {/* Kept inside the outline, so a click at the window's edge still shows whole. */}
+      <circle
+        cx={Math.min(width - 3.5, Math.max(3.5, (width * point.x) / Math.max(viewport.w, 1)))}
+        cy={Math.min(height - 3.5, Math.max(3.5, (height * point.y) / Math.max(viewport.h, 1)))}
+        r="2.4"
+      />
     </svg>
   );
 }
 
-export function ReviewView({ active, fires, verdicts, needed, onVerdict }: Props) {
+export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
   const done = (key: string) => verdicts.has(key);
   const [at, setAt] = useState<string | null>(() => firstUnreviewed(fires, done));
   const [trail, setTrail] = useState<string[]>([]);
@@ -128,7 +131,7 @@ export function ReviewView({ active, fires, verdicts, needed, onVerdict }: Props
       if (key === 'y') actions.current.mark('right');
       else if (key === 'n') actions.current.mark('wrong');
       else if (key === 'u') actions.current.mark('unsure');
-      else if (key === 'z' || key === 'backspace') actions.current.back();
+      else if (key === 'z') actions.current.back();
       else return;
       event.preventDefault();
     };
@@ -136,31 +139,23 @@ export function ReviewView({ active, fires, verdicts, needed, onVerdict }: Props
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const reviewed = fires.filter((f) => {
-    const v = verdicts.get(reviewKey(f));
-    return v === 'right' || v === 'wrong';
-  }).length;
-  const wrong = fires.filter((f) => verdicts.get(reviewKey(f)) === 'wrong').length;
-  const unsure = fires.filter((f) => verdicts.get(reviewKey(f)) === 'unsure').length;
-  const waiting = fires.length - reviewed - unsure;
+  const marked = fires.filter((f) => verdicts.has(reviewKey(f))).length;
 
+  // Only how far along the pile is. What the marks add up to, and how many the
+  // gate needs, are on the numbers page, where they cannot lean on the next mark.
   const progress = (
-    <div class="progress" aria-label="Review progress">
-      <div class="progress-bar" role="img" aria-label={`${reviewed} of ${needed} reviewed`}>
-        <span style={{ width: `${Math.min(100, (100 * reviewed) / needed)}%` }} />
+    <div class="progress">
+      <div
+        class="progress-bar"
+        role="img"
+        aria-label={`${marked} of ${plural(fires.length, 'would-be fire')} marked`}
+      >
+        <span style={{ width: `${fires.length === 0 ? 0 : (100 * marked) / fires.length}%` }} />
       </div>
       <p class="progress-text">
-        <strong class="num">{reviewed}</strong> of <span class="num">{needed}</span> reviewed
+        <strong class="num">{marked}</strong> marked
         <span class="sep"> · </span>
-        <span class={wrong > 0 ? 'num bad' : 'num'}>{wrong}</span> wrong
-        {unsure > 0 && (
-          <>
-            <span class="sep"> · </span>
-            <span class="num">{unsure}</span> not sure
-          </>
-        )}
-        <span class="sep"> · </span>
-        <span class="num">{waiting}</span> waiting
+        <span class="num">{fires.length - marked}</span> waiting
       </p>
     </div>
   );
@@ -204,16 +199,28 @@ export function ReviewView({ active, fires, verdicts, needed, onVerdict }: Props
   return (
     <section class="review">
       <div class="bench">
-        <div class="plate-frame" ref={frame}>
-          <Plate fire={fire} />
-          {stamp && <div class={`stamp stamp-${stamp}`}>{VERDICT_WORDS[stamp]}</div>}
+        <div class="drawing">
+          <div class="plate-frame" ref={frame}>
+            <Plate fire={fire} />
+            {stamp && <div class={`stamp stamp-${stamp}`}>{VERDICT_WORDS[stamp]}</div>}
+          </div>
+          <ul class="legend" aria-label="What the drawing shows">
+            <li class="legend-click">your click</li>
+            <li class="legend-pick">heyo's pick</li>
+            <li class="legend-near">other controls</li>
+            <li class="legend-path">the pointer's path</li>
+          </ul>
         </div>
 
         <div class="call">
           <p class="eyebrow">heyo would have sent this click to</p>
-          <h2 class="target">{nameOf(picked)}</h2>
+          <h2 class="target" title={nameOf(picked)}>
+            {nameOf(picked)}
+          </h2>
           <p class="target-kind">
-            a {kindOf(picked)}, <span class="num">{picked.dist}</span> px from where you clicked
+            {kindOf(picked)}
+            <span class="sep"> · </span>
+            <span class="num">{picked.dist}</span> px from where you clicked
           </p>
 
           <dl class="facts">
@@ -225,7 +232,7 @@ export function ReviewView({ active, fires, verdicts, needed, onVerdict }: Props
             </dd>
             <dt>You clicked on</dt>
             <dd>
-              a blank part of a <code>{record.features.under.tag}</code>
+              blank space inside <code>{`<${record.features.under.tag}>`}</code>
             </dd>
             <dt>Where</dt>
             <dd class="where">
@@ -239,6 +246,12 @@ export function ReviewView({ active, fires, verdicts, needed, onVerdict }: Props
           </dl>
 
           <p class="question">Is that what you were aiming for?</p>
+          {earlier && (
+            <p class="earlier">
+              You marked this <strong>{VERDICT_WORDS[earlier].toLowerCase()}</strong>. Mark it again
+              to change it or to move on.
+            </p>
+          )}
           <div class="verdicts">
             <button
               class={earlier === 'right' ? 'verdict right chosen' : 'verdict right'}

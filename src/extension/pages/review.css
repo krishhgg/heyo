@@ -158,6 +158,50 @@ code {
   align-items: start;
 }
 
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--graphite);
+  font-size: 13px;
+}
+
+.legend li {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.legend li::before {
+  content: '';
+  box-sizing: border-box;
+  width: 14px;
+  height: 10px;
+  border: 1.5px solid var(--graphite);
+  border-radius: 2px;
+}
+
+.legend .legend-click::before {
+  width: 10px;
+  border-color: var(--pencil);
+  border-radius: 50%;
+}
+
+.legend .legend-pick::before {
+  border-color: var(--pen);
+  background: var(--pen-wash);
+}
+
+.legend .legend-path::before {
+  height: 0;
+  border-width: 1.5px 0 0;
+  border-style: dashed;
+  border-radius: 0;
+}
+
 .plate-frame {
   position: relative;
   border: 1.5px solid var(--ink);
@@ -329,6 +373,11 @@ code {
   letter-spacing: -0.015em;
   color: var(--pen);
   overflow-wrap: anywhere;
+  /* A long name takes two lines at most, so the buttons stay where they are. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .target-kind {
@@ -391,10 +440,10 @@ code {
   text-align: left;
 }
 
+/* The three answers weigh the same. A filled button would read as the expected one. */
 .verdict.right {
   border-color: var(--pen);
-  background: var(--pen);
-  color: #fff;
+  color: var(--pen);
 }
 
 .verdict.wrong {
@@ -411,16 +460,26 @@ code {
   transform: translateY(-1px);
 }
 
-.verdict.chosen {
-  box-shadow:
-    0 0 0 3px var(--paper),
-    0 0 0 5px currentColor;
+/* Filled means "this is what you marked", on a click the reviewer came back to. */
+.verdict.right.chosen {
+  background: var(--pen);
+  color: #fff;
 }
 
-.verdict.right.chosen {
-  box-shadow:
-    0 0 0 3px var(--paper),
-    0 0 0 5px var(--pen);
+.verdict.wrong.chosen {
+  border-color: var(--pencil-deep);
+  background: var(--pencil-deep);
+  color: #fff;
+}
+
+.verdict.unsure.chosen {
+  background: var(--graphite);
+  color: #fff;
+}
+
+.earlier {
+  margin-top: 6px;
+  color: var(--graphite);
 }
 
 kbd {
@@ -669,6 +728,12 @@ td.num {
 .danger {
   border-color: var(--pencil);
   background: var(--pencil);
+}
+
+/* Not yet taking clicks, a moment after it appears. */
+.danger[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: default;
 }
 
 @media (max-width: 880px) {

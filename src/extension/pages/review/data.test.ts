@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { candidate, record } from '../../../core/testing';
 import type { Decide } from '../../../core/types';
-import { firesOf, kindOf, nameOf, percentBeside, reviewKey, verdictsOf } from './data';
+import {
+  beside,
+  firesOf,
+  kindOf,
+  nameOf,
+  percentBeside,
+  plural,
+  reviewKey,
+  verdictsOf,
+} from './data';
 
 const pickFirst: Decide = (f) =>
   f.candidates[0]
@@ -64,16 +73,44 @@ describe('kindOf and nameOf', () => {
 });
 
 describe('percentBeside', () => {
-  it('shows two decimals when the value is clear of the limit', () => {
+  it('shows the usual decimals when the value is clear of the limit', () => {
     expect(percentBeside(0.0058, 0.01)).toBe('0.58%');
     expect(percentBeside(0.0153, 0.01)).toBe('1.53%');
+    expect(percentBeside(0.62, 0.5, 0)).toBe('62%');
     expect(percentBeside(null, 0.01)).toBe('none yet');
   });
 
   it('adds decimals until a value right beside the limit can be told from it', () => {
     // 299 marks with none wrong: the bound is just under the 1% it has to stay under.
     expect(percentBeside(0.009969, 0.01)).toBe('0.997%');
-    expect(percentBeside(0.0100003, 0.01)).toBe('1.00003%');
+    // 124 recovered of 250 is a fail, and must not read as the 50% it needs.
+    expect(percentBeside(124 / 250, 0.5, 0)).toBe('49.6%');
+    expect(percentBeside(0.00496, 0.005)).toBe('0.496%');
     expect(percentBeside(0.01, 0.01)).toBe('1.00%');
+  });
+});
+
+describe('beside', () => {
+  it('tells 2.96 misses a day from the 3 it needs', () => {
+    expect(beside(2.96, 3, 1)).toBe('2.96');
+    expect(beside(3.4, 3, 1)).toBe('3.4');
+    expect(beside(3, 3, 1)).toBe('3.0');
+  });
+});
+
+describe('the words for a control', () => {
+  it('calls button-like inputs buttons and names the other kinds', () => {
+    const input = (type: string) => kindOf(candidate(0, 3, { tag: 'input', type }));
+    expect(input('submit')).toBe('button');
+    expect(input('checkbox')).toBe('checkbox');
+    expect(input('radio')).toBe('radio button');
+    expect(input('email')).toBe('email field');
+    expect(input('text')).toBe('text field');
+  });
+
+  it('counts one thing in the singular', () => {
+    expect(plural(1, 'click')).toBe('1 click');
+    expect(plural(4, 'click')).toBe('4 clicks');
+    expect(plural(1234, 'review mark')).toBe('1,234 review marks');
   });
 });

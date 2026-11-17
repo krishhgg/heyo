@@ -1,5 +1,5 @@
 // The numbers the plan steers by, with the gate each one has to clear.
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   GATES,
   missRateGate,
@@ -10,14 +10,17 @@ import {
 import { addDays, dayOf } from '../../../core/days';
 import { missRate, type Score } from '../../../core/metrics';
 import type { Log } from '../../db';
-import { percentBeside } from './data';
+import { beside, percentBeside, plural } from './data';
 
 interface Props {
   log: Log;
   score: Score;
-  onExport: () => void;
+  onExport: () => Promise<void>;
   onDelete: () => Promise<void>;
 }
+
+/** How long the delete button ignores clicks after it appears, so a double-click cannot reach it. */
+const ARM_MS = 600;
 
 const STATUS_WORDS: Record<GateStatus, string> = {
   pass: 'Pass',
@@ -63,6 +66,25 @@ function DayRuler({ log, elapsed }: { log: Log; elapsed: number }) {
 
 export function NumbersView({ log, score, onExport, onDelete }: Props) {
   const [confirming, setConfirming] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const keep = useRef<HTMLButtonElement>(null);
+  const remove = useRef<HTMLButtonElement>(null);
+
+  // The button just clicked is gone, so focus moves to the safe choice. The
+  // delete button takes clicks only after a moment.
+  useEffect(() => {
+    if (!confirming) return;
+    keep.current?.focus();
+    setArmed(false);
+    const timer = window.setTimeout(() => setArmed(true), ARM_MS);
+    return () => window.clearTimeout(timer);
+  }, [confirming]);
+
+  const close = () => {
+    setConfirming(false);
+    // Wait for the first button to be back before giving it the focus.
+    window.setTimeout(() => remove.current?.focus(), 0);
+  };
   const rate = missRate(log.records, log.counts, dayOf(Date.now()));
   const rateGate = missRateGate(rate);
   const recovery = recoveryGate(score);
@@ -110,12 +132,14 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
             <Row name="Misses" value={rate.misses.toLocaleString()} needs="" />
             <Row
               name="Misses as a share of clicks"
-              value={percent(rate.rate, 2)}
+              value={percentBeside(rate.rate, GATES.minMissRate)}
               needs={`${100 * GATES.minMissRate}% or more`}
             />
             <Row
               name="Misses a day"
-              value={rate.perDay === null ? 'none yet' : rate.perDay.toFixed(1)}
+              value={
+                rate.perDay === null ? 'none yet' : beside(rate.perDay, GATES.minMissesPerDay, 1)
+              }
               needs={`${GATES.minMissesPerDay} or more`}
             />
             <Row
@@ -160,7 +184,7 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
               value={
                 recovery.recovery === null
                   ? 'none yet'
-                  : `${percent(recovery.recovery, 0)} (${score.recovered} of ${score.misses})`
+                  : `${percentBeside(recovery.recovery, GATES.minRecovery, 0)} (${score.recovered} of ${score.misses})`
               }
               needs={`${100 * GATES.minRecovery}% or more, on ${GATES.minMisses} misses or more`}
               status={recovery.status}
@@ -170,6 +194,11 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
               name="Fires you reviewed"
               value={`${wrong.reviewed} (${wrong.wrong} wrong)`}
               needs={`${wrong.needed} with this many wrong`}
+            />
+            <Row
+              name="Fires you marked not sure"
+              value={score.unsure.toLocaleString()}
+              needs="left out of the rate"
             />
             <Row
               name="Wrong-target rate, upper bound"
@@ -200,33 +229,41 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
           it blanks any name that repeats what a field holds.
         </p>
         <p class="log-size">
-          <span class="num">{log.records.length.toLocaleString()}</span> logged clicks,{' '}
-          <span class="num">{log.reviews.length.toLocaleString()}</span> review marks
+          <span class="num">{plural(log.records.length, 'logged click')}</span>,{' '}
+          <span class="num">{plural(log.reviews.length, 'review mark')}</span>
         </p>
         <div class="log-actions">
-          <button class="primary" onClick={onExport}>
+          <button class="primary" onClick={() => void onExport()}>
             Export the log
           </button>
           {confirming ? (
             <>
+              {/* The safe choice sits where the first click landed, so a double-click keeps the log. */}
+              <button class="ghost" ref={keep} onClick={close}>
+                Keep the log
+              </button>
               <button
                 class="danger"
+                aria-disabled={!armed}
                 onClick={() => {
-                  void onDelete().then(() => setConfirming(false));
+                  if (armed) void onDelete().then(close);
                 }}
               >
-                Delete {log.records.length.toLocaleString()} clicks and all marks
-              </button>
-              <button class="ghost" onClick={() => setConfirming(false)}>
-                Keep the log
+                Delete {plural(log.records.length, 'click')} and all marks
               </button>
             </>
           ) : (
-            <button class="ghost" onClick={() => setConfirming(true)}>
+            <button class="ghost" ref={remove} onClick={() => setConfirming(true)}>
               Delete the log
             </button>
           )}
         </div>
+        {confirming && (
+          <p class="sheet-note">
+            Deleting also clears the click counts, so the {GATES.shadowDays} days of shadow mode
+            start again.
+          </p>
+        )}
       </article>
     </section>
   );
