@@ -99,3 +99,17 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - A candidate that left the document matches a follow-up on a control with the same tag, label and box, when exactly one candidate fits. Pages re-render and replace nodes.
 - A press on a disabled control is counted at the release, since Chrome sends no click for it.
 - Record ids come from `crypto.getRandomValues`. `crypto.randomUUID` does not exist on plain HTTP pages.
+- Labels never include a field's value or text inside an editable region. A password field is always logged as "password field".
+
+## Review page
+
+- The toolbar button opens the review page in a tab. There is no popup, so the extension has one page to learn.
+- Fires are reviewed in the order of a hash of the record id. That order is random with respect to time and site and is the same on every visit, so reviewing from the front is reviewing a random sample of all would-be fires.
+- The review never shows whether the user retried. The verified wrong-target rate has to be independent of the proxy label.
+- A review judges the control the bundled decision picks now, not the one logged at click time. After a decision update the page asks again about any click whose pick changed.
+- Keys are `Y` for right, `N` for wrong, `U` for not sure and `Z` to go back. The question is worded as yes or no so the keys match it.
+- Keys are ignored for about a quarter second while the verdict stamp shows, so a double tap cannot mark a click the reviewer has not seen.
+- The drawing shows 56 px on each side of the click at a fixed scale, so distances look the same from one click to the next.
+- The page uses one bundled typeface, Recursive (OFL). The extension makes no network calls, so the font ships inside it.
+- Preact renders the page. It is 4 KB and keeps the review state readable.
+- Deleting the log takes two clicks, and the second button names how much it deletes.

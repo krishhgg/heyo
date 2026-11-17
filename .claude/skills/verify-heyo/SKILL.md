@@ -73,6 +73,7 @@ Never kill Chromium by process name. Other work on this machine may be using it.
 
 - `.claude/skills/verify-heyo/scripts/verify.mjs` is the only entry point. `npm run verify -- <args>` calls it.
 - `.claude/skills/verify-heyo/scripts/drives/*.mjs` are the per-feature drives.
+- `.claude/skills/verify-heyo/scripts/to-gif.sh <evidence folder>` turns the `.webm` files from a `--video` run into GIFs. It needs `ffmpeg`.
 - `e2e/helpers/extension.ts` launches Chromium with the extension. The Playwright tests and the drives share it.
 - `e2e/server.mjs` serves the fixture pages.
 
