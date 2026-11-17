@@ -77,13 +77,14 @@ export interface Tally {
   /** Records from a click planned to land on a control or far from every control. */
   unplanned: number;
   /**
-   * Clicks planned on empty space beside a control that left no record. Within
-   * a pixel of the control's edge a real press can land on the control. Near
-   * the 30 px end of the search, the rings of sample points can miss a corner.
-   * Anything between is a click the extension should have logged.
+   * Clicks planned on empty space beside a control that left no record, for a
+   * reason the extension is right about. Near the 30 px end of the search, the
+   * rings of sample points can miss a corner. A drag let go inside an iframe
+   * gives the page no click at all.
    */
-  silentEdge: number;
   silentFar: number;
+  silentDrag: number;
+  /** Any other such click. The extension should have logged it. */
   silent: string[];
   /** Aimed misses that were retried on the target, and how many logs say so. */
   retries: number;
@@ -107,8 +108,8 @@ export function schedule(options: ScriptedOptions): { days: Day[]; tally: Tally 
     played: 0,
     records: 0,
     unplanned: 0,
-    silentEdge: 0,
     silentFar: 0,
+    silentDrag: 0,
     silent: [],
     retries: 0,
     retriesLogged: 0,
@@ -207,7 +208,12 @@ async function playDay(
     if (log.records.some((r) => r.t >= episode.from && r.t <= episode.to)) continue;
     const { plan } = episode.click;
     const nearest = Math.min(...plan.scene.map((c) => distanceToRect(plan.p, c.rect)));
-    if (nearest < 1) tally.silentEdge++;
+    // The player drags to the right, by the planned distance.
+    const end = { x: plan.p.x + plan.press.move, y: plan.p.y };
+    const intoFrame =
+      plan.intent === 'drag' &&
+      plan.scene.some((c) => c.tag === 'iframe' && distanceToRect(end, c.rect) === 0);
+    if (intoFrame) tally.silentDrag++;
     else if (nearest > CANDIDATE_RADIUS - RING_SLACK_PX) tally.silentFar++;
     else {
       tally.silent.push(
@@ -310,7 +316,7 @@ function describe(tally: Tally): string {
     `  counted but not played, made into a window without focus: ${tally.skippedUnfocused}`,
     `Records the extension logged: ${tally.records}`,
     `  from clicks planned as plain: ${tally.unplanned}`,
-    `Clicks beside a control that left no record: ${tally.silentEdge} within 1 px of its edge, ${tally.silentFar} at the far end of the search, ${tally.silent.length} in between`,
+    `Clicks beside a control that left no record: ${tally.silentFar} at the far end of the search, ${tally.silentDrag} drags let go inside an iframe, ${tally.silent.length} unexplained`,
     ...tally.silent.map((line) => `  ${line}`),
     `Retries on the target that the log attached to the miss: ${share(tally.retriesLogged, tally.retries)}`,
     `Nearest control the same as the generator simulated: ${share(tally.sameNearest, tally.compared)}`,

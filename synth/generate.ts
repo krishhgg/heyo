@@ -89,6 +89,12 @@ export const ASSUMPTIONS = {
   dwellMedianMs: 110,
   /** Share of aimed movements that end with a small corrective movement. */
   correctionShare: 0.3,
+  /**
+   * A corrective movement heads for the target, within this many radians. The
+   * first movement lands off, and the correction closes part of the gap. A hand
+   * that is already on its target does not correct its way off it.
+   */
+  correctionSpread: Math.PI / 4,
 } as const;
 
 const DAY_MS = 86_400_000;
@@ -183,8 +189,18 @@ function round(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+/** True when a press at p lands on a box as a browser decides it: the right and bottom edges are outside. */
 function contains(rect: Rect, p: Point): boolean {
-  return p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h;
+  return p.x >= rect.x && p.x < rect.x + rect.w && p.y >= rect.y && p.y < rect.y + rect.h;
+}
+
+/**
+ * A pointer reports whole pixels. Without this a simulated click could miss a
+ * control by a fraction of a pixel, which no pointer can do: played through a
+ * real browser, such a click lands on the control.
+ */
+function onPixel(p: Point): Point {
+  return { x: Math.round(p.x), y: Math.round(p.y) };
 }
 
 function center(rect: Rect): Point {
@@ -404,10 +420,11 @@ function arrival(
     const t = -dwell - (durationMs - elapsed);
     if (t < -PATH_WINDOW_MS) break;
     const left = distance * (1 - minimumJerk(elapsed / durationMs));
+    // Whole pixels, as a pointer reports them.
     samples.push({
       t: Math.round(t),
-      x: round(end.x - Math.cos(angle) * left + (left > 0 ? rng.normal(0, 0.3) : 0)),
-      y: round(end.y - Math.sin(angle) * left + (left > 0 ? rng.normal(0, 0.3) : 0)),
+      x: Math.round(end.x - Math.cos(angle) * left + (left > 0 ? rng.normal(0, 0.3) : 0)),
+      y: Math.round(end.y - Math.sin(angle) * left + (left > 0 ? rng.normal(0, 0.3) : 0)),
     });
   }
   return samples.reverse();
@@ -422,14 +439,26 @@ function dwellMs(rng: Random): number {
   return Math.min(900, Math.max(20, rng.logNormal(ASSUMPTIONS.dwellMedianMs, 0.55)));
 }
 
-/** The cursor path of an aimed movement that ended at the click point. */
-function aimedPath(rng: Random, site: Site, angle: number, distance: number, width: number) {
+/**
+ * The cursor path of an aimed movement that ended at the click point.
+ * `toward` is the direction from the click point to the middle of the target.
+ */
+function aimedPath(
+  rng: Random,
+  site: Site,
+  angle: number,
+  distance: number,
+  width: number,
+  toward: number,
+) {
   const dwell = dwellMs(rng);
   if (!rng.chance(ASSUMPTIONS.correctionShare)) {
     return arrival(rng, site.hz, angle, distance, movementMs(distance, width), dwell);
   }
-  // The main movement stops a few px off, and a short second movement closes the gap.
-  const offAngle = rng.uniform(0, 2 * Math.PI);
+  // The main movement stops a few px off, on the far side from the target, and
+  // a short second movement toward the target closes part of the gap.
+  const { correctionSpread } = ASSUMPTIONS;
+  const offAngle = toward + rng.uniform(-correctionSpread, correctionSpread);
   const off = rng.uniform(3, 12);
   const fixMs = rng.uniform(60, 120);
   const pause = rng.uniform(40, 110);
@@ -583,18 +612,21 @@ function planAimed(rng: Random, site: Site): Plan {
   const target = rng.pick(targets.length > 0 ? targets : scene);
   const angle = rng.uniform(0, 2 * Math.PI);
   const distance = Math.min(900, Math.max(30, rng.logNormal(240, 0.6)));
-  const p = aimAt(rng, target, angle, 1);
+  const p = onPixel(aimAt(rng, target, angle, 1));
   if (hitAt(scene, p)) return { ...NO_PLAN, intent: 'aim', scene, target, p, hit: true };
 
   const width = Math.min(target.rect.w, target.rect.h);
+  const middle = center(target.rect);
+  const toward = Math.atan2(middle.y - p.y, middle.x - p.x);
   let second: Plan['second'] = null;
   if (rng.chance(ASSUMPTIONS.doubleClickShare)) {
-    const q = { x: p.x + rng.normal(0, 0.6), y: p.y + rng.normal(0, 0.6) };
+    const q = onPixel({ x: p.x + rng.normal(0, 0.6), y: p.y + rng.normal(0, 0.6) });
     second = { q, dt: rng.uniform(110, 320) };
   } else if (rng.chance(ASSUMPTIONS.retryShare)) {
     const dt = Math.max(160, rng.logNormal(ASSUMPTIONS.retryMedianMs, 0.45));
     if (dt <= 1500) {
-      second = { q: aimAt(rng, target, rng.uniform(0, 2 * Math.PI), ASSUMPTIONS.retryCare), dt };
+      const again = aimAt(rng, target, rng.uniform(0, 2 * Math.PI), ASSUMPTIONS.retryCare);
+      second = { q: onPixel(again), dt };
     }
   }
   return {
@@ -604,7 +636,7 @@ function planAimed(rng: Random, site: Site): Plan {
     p,
     hit: false,
     second,
-    path: aimedPath(rng, site, angle, distance, width),
+    path: aimedPath(rng, site, angle, distance, width, toward),
     press: pressOf(rng),
     focused: !rng.chance(ASSUMPTIONS.unfocusedShare),
     reaction: reactionTo(rng, site, site.reactShare),
@@ -618,7 +650,7 @@ function planDeliberate(rng: Random, site: Site, intent: Intent): Plan {
   const clearance = near14
     ? rng.uniform(1, ASSUMPTIONS.nearPx)
     : rng.uniform(ASSUMPTIONS.nearPx, 220);
-  const p = emptyPoint(rng, scene, clearance);
+  const p = onPixel(emptyPoint(rng, scene, clearance));
   if (hitAt(scene, p)) return { ...NO_PLAN, intent, scene, target: null, p, hit: true };
   const near = candidatesAt(scene, p);
 
@@ -646,7 +678,7 @@ function planDeliberate(rng: Random, site: Site, intent: Intent): Plan {
   if (rng.chance(ASSUMPTIONS.deliberateThenClickShare)) {
     const dt = Math.max(200, rng.logNormal(700, 0.4));
     const next = rng.pick(scene);
-    if (dt <= 1500) second = { q: center(next.rect), dt };
+    if (dt <= 1500) second = { q: onPixel(center(next.rect)), dt };
   }
 
   let press = pressOf(rng);
