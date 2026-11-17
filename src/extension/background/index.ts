@@ -14,7 +14,7 @@ import {
   type Log,
 } from '../db';
 import type { PageReply, PageRequest, PingReply, PingRequest, WorkerMessage } from '../messages';
-import { readSettings, writeSettings, type Settings } from '../settings';
+import { DEFAULT_SETTINGS, readSettings, writeSettings, type Settings } from '../settings';
 import { decisionVersion } from '../version';
 
 const WEEK_MS = 7 * 86_400_000;
@@ -97,7 +97,7 @@ async function orShadow<T>(job: () => Promise<T>): Promise<T> {
     return await job();
   } catch (error) {
     const settings = await readSettings().catch(() => null);
-    if (settings?.mode !== 'shadow') await writeSettings({ mode: 'shadow', offReason: 'gates' });
+    if (settings?.mode !== 'shadow') await writeSettings({ mode: 'shadow', offReason: 'error' });
     throw error;
   }
 }
@@ -167,8 +167,11 @@ async function settle(
       change = { ...change, mode: 'shadow', offReason: reported ? 'wrong-clicks' : 'gates' };
     }
   } else if (before.offReason === 'irreversible') {
-    // The reason goes when the report that gave it is taken back.
-    if (!wrongReports.some((r) => r.irreversible)) change = { ...change, offReason: null };
+    // The reason goes when the report that gave it is taken back. If the
+    // other reports are still too many for a week, that becomes the reason.
+    if (!wrongReports.some((r) => r.irreversible)) {
+      change = { ...change, offReason: tooMany ? 'wrong-clicks' : null };
+    }
   } else if (before.offReason === 'wrong-clicks') {
     if (!tooMany && (await gatesPass())) change = { ...change, offReason: null };
   }
@@ -228,7 +231,9 @@ async function mark(review: Review): Promise<PageReply> {
 /** Deletes the log, and the reports that were about it. An empty log passes no gate. */
 async function clear(): Promise<PageReply> {
   await clearLog();
-  await writeSettings({ wrongReports: [] });
+  // With the log go the reports and any reason that named them. If retargeting
+  // was on, the check below turns it off and says the log no longer passes.
+  await writeSettings({ wrongReports: [], offReason: null });
   return { ok: true, settings: await enforce() };
 }
 
@@ -264,7 +269,11 @@ chrome.runtime.onMessage.addListener(
       // The settings and the marks change only at the request of one of the extension's own pages.
       if (!sender.url?.startsWith(chrome.runtime.getURL(''))) return false;
       void inTurn(() => orShadow(() => answer(message as PageRequest)))
-        .catch(async () => ({ ok: false, settings: await readSettings() }))
+        // The page gets an answer also when the settings cannot be read.
+        .catch(async () => ({
+          ok: false,
+          settings: await readSettings().catch(() => DEFAULT_SETTINGS),
+        }))
         .then(sendResponse);
       return true;
     }
@@ -278,11 +287,11 @@ chrome.runtime.onMessage.addListener(
 );
 
 // Whenever the worker starts, for whatever reason, it checks the gates once.
-void inTurn(enforce);
+void inTurn(() => orShadow(enforce));
 // Chrome starts the worker for these two, so the check runs right after an
 // update that brings a new decision, and at browser start, before any page asks.
-chrome.runtime.onInstalled.addListener(() => void inTurn(enforce));
-chrome.runtime.onStartup.addListener(() => void inTurn(enforce));
+chrome.runtime.onInstalled.addListener(() => void inTurn(() => orShadow(enforce)));
+chrome.runtime.onStartup.addListener(() => void inTurn(() => orShadow(enforce)));
 
 /** The toolbar button opens the review page, or switches to it if it is already open. */
 chrome.action.onClicked.addListener(() => {

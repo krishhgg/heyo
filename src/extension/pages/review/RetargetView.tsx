@@ -31,6 +31,8 @@ const STATUS_WORDS: Record<GateStatus, string> = {
 const OFF_REASONS: Record<NonNullable<Settings['offReason']>, string> = {
   gates:
     'heyo turned retargeting off because your log no longer passes both gates. It can go on again once they pass.',
+  error:
+    'heyo turned retargeting off because it could not read or write its log. It can go on again once the gates pass.',
   'wrong-clicks':
     'heyo turned retargeting off because of wrong clicks you reported. Review more fires, then turn it on again if the gates pass.',
   irreversible: 'heyo turned retargeting off after a wrong click that could not be undone.',

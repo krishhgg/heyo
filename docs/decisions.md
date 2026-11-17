@@ -251,7 +251,8 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - The reason heyo gave for turning retargeting off goes when it no longer holds: the report of a click that could not be undone was taken back, or the reports are back to one a week and the gates pass. Retargeting stays off until the user turns it on.
 - A report of a click that could not be undone is kept until it is taken back, not for a week, and the tab warns about it before the switch also when the report was made while retargeting was off.
 - heyo gives a reason for turning retargeting off only when it did. A report made while retargeting was already off changes no reason.
-- Every job in the worker fails closed. If a job fails, also halfway, after a mark was stored and before the log could be read again, retargeting turns off.
+- Every job in the worker fails closed. If a job fails, also halfway, after a mark was stored and before the log could be read again, retargeting turns off, and the tab says heyo could not read or write its log.
+- Deleting the log clears any reason that named a report, since the report goes with the log.
 - After heyo turns retargeting off by itself, the user can turn it on again at once if the gates still pass. The off reason is advice, not a lock.
 - Only the 12 latest sent clicks can be reported, and they are named by label and site because heyo stores no URLs. An older one can still be marked wrong on the Review tab.
 - Deleting the log also clears the times of the wrong-click reports, and turns retargeting off, since an empty log passes no gate.

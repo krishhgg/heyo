@@ -14,10 +14,10 @@ export interface Settings {
   waitForDoubleClick: boolean;
   /**
    * Why heyo turned retargeting off by itself, if it did: the log stopped
-   * passing the gates, the user reported wrong clicks, or the user reported one
-   * that could not be undone.
+   * passing the gates, heyo could not read or write its log, the user reported
+   * wrong clicks, or the user reported one that could not be undone.
    */
-  offReason: null | 'gates' | 'wrong-clicks' | 'irreversible';
+  offReason: null | 'gates' | 'error' | 'wrong-clicks' | 'irreversible';
   /**
    * The wrong clicks the user reported: which click, when, and whether it
    * could not be undone. One entry a click. A report is dropped after a week,

@@ -660,7 +660,7 @@ test.describe('retargeting stays on only while the log passes the gates', () => 
     );
     expect(reply.ok).toBe(false);
     // The wrong mark is in the log, so retargeting may not stay on unjudged.
-    expect(await settingsOf(worker)).toMatchObject({ mode: 'shadow', offReason: 'gates' });
+    expect(await settingsOf(worker)).toMatchObject({ mode: 'shadow', offReason: 'error' });
     await worker.evaluate(() => (globalThis as { mendStore?: () => void }).mendStore?.());
     await expectShadow(page);
   });
