@@ -22,7 +22,10 @@
     "scripted": "node scripted/cli.mjs",
     "loop": "node loop/cli.mjs run",
     "lint:decision": "node loop/cli.mjs lint src/decision",
-    "e2e:live": "playwright test --config playwright.live.config.ts"
+    "e2e:live": "playwright test --config playwright.live.config.ts",
+    "package": "node scripts/build.mjs && node scripts/package.mjs",
+    "install:chrome": "node scripts/install-chrome.mjs",
+    "store:shots": "node scripts/store-shots.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
