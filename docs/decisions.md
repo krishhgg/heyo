@@ -186,3 +186,23 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - A corrective movement now heads for the target, within 45 degrees. Before, it went in a random direction, so in many simulated misses the cursor sat on the target and then moved off it to click beside it. That is what a deliberate click beside a control looks like, and the decision refuses it. An aiming hand that is on its target clicks.
 - With both fixes the two worlds agree click for click. Over three seeds of 24 weeks, every planned click beside a control left a record, apart from about 23 a run at the far end of the 30 px search and one drag a run that was let go inside an iframe. The extension named the same nearest control as the generator in more than 99.9% of records.
 - These fixes moved the numbers a decision is judged by, so each pull request that reports gate numbers says which generator they come from.
+
+## Decision
+
+- The decision that ships is the first one tightened in three places. The runner-up has to be four times as far as the nearest control and at least 8 px farther. The cursor has to have moved at least 2 px in the 300 ms before the press.
+- The margin came from the agent loop. Its first round on a synthetic train split raised the margin from 2 to 4 and added the 8 px gap, which took the wrong fires on that split from 16 in 644 to 1 in 526. A ratio alone is not enough when the nearest control is a pixel or two away, because four times a small number is still small.
+- The cursor rule was added by hand. A miss comes at the end of an aimed movement. A click from a cursor that has been still for 300 ms is far more often meant for the spot it is on.
+- The decision is judged on the held-out split of six 24-week logs: three seeds of the synthetic generator, and the same three played through the real extension. Both gates pass on all six.
+
+| Log       | Seed | Recovery, held-out | Wrong in reviewed fires | Upper bound |
+| --------- | ---- | ------------------ | ----------------------- | ----------- |
+| Synthetic | 1    | 61.5% of 1,884     | 4 in 1,337              | 0.68%       |
+| Synthetic | 2    | 56.5% of 1,957     | 1 in 1,288              | 0.37%       |
+| Synthetic | 3    | 58.7% of 1,894     | 2 in 1,309              | 0.48%       |
+| Scripted  | 1    | 59.3% of 2,199     | 4 in 1,513              | 0.60%       |
+| Scripted  | 2    | 55.7% of 2,250     | 3 in 1,476              | 0.52%       |
+| Scripted  | 3    | 58.1% of 2,111     | 4 in 1,463              | 0.62%       |
+
+- These numbers come from the generator after its two fixes, whole-pixel presses and corrections that head for the target. Before them the same decision read 50.7%, 47.9% and 46.9% on the scripted logs, because a sixth of the simulated misses had the cursor leaving the target, which the decision refuses on purpose.
+- What the gates on these logs show is that the decision, the capture and the scorer hold together. The wrong-target numbers follow from a guessed share of deliberate clicks beside a control. Whether the decision is right for a real person is what the two weeks of shadow mode and the hand review are for.
+- The refusals that cost the most recovery are the margin, at about a fifth of misses, and the cursor rules. One measured alternative scores each candidate by its distance in units of the control's own size, and asks that every other candidate be far less likely. On the three scripted logs it recovers about 3 points more with as few wrong fires. It is left for the loop to weigh on a real log, where it can be tested against how people miss.

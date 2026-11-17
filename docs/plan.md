@@ -27,7 +27,7 @@ The extension never cancels the real click. It lets the click land and replays o
 
 The signals are distance to the candidate's nearest edge, the margin over the runner-up, and whether the last 300 ms of cursor path slowed toward it.
 
-It refuses when the nearest candidate is over 12 px away, the runner-up is less than twice as far, the page reacted, the press was a drag or long press, the tab lacked focus, or the target looks irreversible, such as delete, pay or send.
+It refuses when the nearest candidate is over 12 px away, the runner-up is less than four times as far or less than 8 px farther, the page reacted, the press was a drag or long press, the tab lacked focus, the cursor did not move in the 300 ms before the press or moved off the control, or the target looks irreversible, such as delete, pay or send. Twice as far was the first guess. On synthetic and scripted logs it let through about three times the wrong fires the 1% ceiling allows, and the wider margin and the cursor rules are what bring it under.
 
 The first click of a double-click can't be recognized within 50 ms, so a replay may already have fired. Shadow mode counts how often a would-be fire is followed by a second press within the double-click interval. If that is common, delay the replay until the interval passes and check that the delay still feels acceptable.
 
