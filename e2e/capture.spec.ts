@@ -35,6 +35,7 @@ test.describe('an empty-space click near a control', () => {
     });
     expect(record.decision).toEqual({ action: 'retarget', candidate: 0 });
     expect(record.decisionVersion).toMatch(/^[0-9a-f]{12}$/);
+    expect(record.extensionVersion).toBe('0.1.0');
     expect(record.followUp).toBeNull();
   });
 

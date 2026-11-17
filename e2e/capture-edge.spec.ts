@@ -219,6 +219,22 @@ test.describe('forms', () => {
     expect(after!.followUp).toMatchObject({ kind: 'control', candidate: 0 });
   });
 
+  test('an icon button is named by the element its aria-labelledby points to', async ({
+    page,
+    worker,
+  }) => {
+    const record = await recordOf(page, worker, 336, 548); // 4 px right of the icon button
+    expect(record.features.candidates[0]).toMatchObject({ tag: 'button', label: 'Next page' });
+    expect(record.decision).toEqual({ action: 'retarget', candidate: 0 });
+  });
+
+  test('a label around a disabled checkbox is disabled', async ({ page, worker }) => {
+    const label = await page.locator('#locked').boundingBox();
+    const record = await recordOf(page, worker, label!.x + label!.width + 4, label!.y + 16);
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Locked', disabled: true });
+    expect(record.decision).toEqual({ action: 'refuse', reason: 'disabled' });
+  });
+
   test('typed text far into a long answer is still blanked where the page repeats it', async ({
     page,
     worker,

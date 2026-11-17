@@ -56,6 +56,7 @@ export function record(
     features: features(f),
     decision: { action: 'refuse', reason: 'no-candidate' },
     decisionVersion: 'test',
+    extensionVersion: 'test',
     followUp,
     ...overrides,
   };

@@ -184,7 +184,9 @@ export function closestClickable(start: Element, hasListener: HasListener): Clic
   return null;
 }
 
+/** True for a control a click cannot activate. A label is disabled when its control is. */
 export function isDisabled(element: Element): boolean {
   if (element.matches(':disabled')) return true;
+  if (element instanceof HTMLLabelElement && element.control?.matches(':disabled')) return true;
   return element.closest('[aria-disabled="true"]') !== null;
 }

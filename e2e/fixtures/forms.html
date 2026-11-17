@@ -52,6 +52,23 @@
       Use nothing
     </button>
 
+    <!-- Row 5: an icon button named by another element, and a disabled checkbox inside a label. -->
+    <span id="next-name" class="at" style="left: 100px; top: 540px">Next page</span>
+    <button
+      id="next"
+      class="at"
+      style="left: 300px; top: 532px; width: 32px"
+      aria-labelledby="next-name"
+    >
+      <svg width="12" height="12"><rect width="12" height="12" /></svg>
+    </button>
+    <label
+      id="locked"
+      class="at"
+      style="left: 500px; top: 532px; padding: 8px 12px; background: #eee"
+      ><input id="locked-box" type="checkbox" disabled /> Locked</label
+    >
+
     <script>
       const answer = document.getElementById('answer');
       answer.addEventListener('input', () => {

@@ -93,6 +93,11 @@ export function typedText(roots: ShadowRoot[]): Typed {
     if (text.length >= MIN_TYPED) texts.add(text);
   };
   const read = (element: Element | null): boolean => {
+    // A chosen file's name is the user's too, and pages repeat it beside the field.
+    if (element instanceof HTMLInputElement && element.type === 'file') {
+      for (const file of element.files ?? []) add(file.name);
+      return false;
+    }
     if (isTextInput(element)) add(element.value);
     else if (isEditableRegion(element)) add(element.textContent ?? '');
     else return false;
@@ -141,6 +146,8 @@ export interface Label {
 function finish(label: string, typed: Typed): Label {
   if (!typed.complete) return { text: label === '' ? '' : '…', redacted: label !== '' };
   const lower = label.toLowerCase();
+  // A few characters change length in lower case. The positions below would then be off.
+  if (lower.length !== label.length) return { text: '…', redacted: true };
   const hide = new Array<boolean>(label.length).fill(false);
   for (const text of typed.texts) {
     const size = Math.min(ECHO_WINDOW, text.length);
@@ -162,8 +169,21 @@ function finish(label: string, typed: Typed): Label {
   return { text: out.slice(0, LABEL_MAX), redacted: true };
 }
 
+/** The text of the elements an aria-labelledby attribute points to, in the element's own tree. */
+function labelledBy(element: Element): string {
+  const ids = element.getAttribute('aria-labelledby')?.trim().split(/\s+/) ?? [];
+  const root = element.getRootNode() as Document | ShadowRoot;
+  return squash(
+    ids
+      .map((id) => root.getElementById?.(id))
+      .map((labeller) => (labeller ? pageText(labeller, true) : ''))
+      .join(' '),
+  );
+}
+
 function rawLabel(element: Element): string {
-  const named = attribute(element, 'aria-label') || attribute(element, 'title');
+  const named =
+    attribute(element, 'aria-label') || labelledBy(element) || attribute(element, 'title');
   if (named) return named;
   const tag = tagOf(element);
   // A button input's value is the developer's label for it.

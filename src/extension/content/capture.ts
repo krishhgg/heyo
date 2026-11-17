@@ -177,6 +177,7 @@ export function startCapture(): void {
       features,
       decision: decide(features),
       decisionVersion,
+      extensionVersion: chrome.runtime.getManifest().version,
       followUp: null,
     };
     if (!lone) send({ type: 'record', record });

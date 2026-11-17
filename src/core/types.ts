@@ -169,6 +169,8 @@ export interface ClickRecord {
   decision: Decision;
   /** Version of the decision module that produced decision. */
   decisionVersion: string;
+  /** Version of the extension that logged the click, so records can be told apart if the capture code changes. */
+  extensionVersion: string;
   followUp: FollowUp | null;
 }
 
