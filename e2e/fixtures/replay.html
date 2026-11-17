@@ -97,6 +97,14 @@
     </div>
     <button id="vanisher" class="at" style="left: 300px; top: 400px">Vanisher</button>
     <p id="status" class="at" style="left: 500px; top: 400px; margin: 0"></p>
+    <!-- An editor with no tabindex, which a real click still puts the cursor in. -->
+    <div
+      id="editor"
+      class="at"
+      contenteditable="true"
+      aria-label="Notes"
+      style="left: 700px; top: 400px; width: 80px; height: 32px; border: 1px solid #99a"
+    ></div>
     <div id="zone" class="at" style="left: 900px; top: 480px; width: 80px; height: 32px"></div>
     <!-- A frame of its own, well away from every control. A press in it never reaches the page's listeners. -->
     <iframe

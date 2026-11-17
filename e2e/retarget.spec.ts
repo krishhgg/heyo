@@ -96,6 +96,12 @@ test.describe('a near miss with retargeting on', () => {
     expect(fire).toEqual(sent);
   });
 
+  test('puts the cursor in an editable region that has no tabindex', async ({ page, worker }) => {
+    const { fire } = await nearMiss(page, worker, 784, 416);
+    await expect(page.locator('#editor')).toBeFocused();
+    expect(fire).toEqual(sent);
+  });
+
   test('opens a details element once', async ({ page, worker }) => {
     const { actions, fire } = await nearMiss(page, worker, 984, 110);
     expect(actions).toEqual(['details']);
