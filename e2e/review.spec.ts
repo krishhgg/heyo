@@ -448,7 +448,7 @@ test.describe('the review page', () => {
       };
       expect([first.name, second.name].sort()).toEqual([
         'Save',
-        'Save the quarterly planning notes as a d…',
+        'Save the quarterly planning notes draft',
       ]);
       expect(second.at).toEqual(first.at);
     });

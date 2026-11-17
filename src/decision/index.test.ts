@@ -6,23 +6,61 @@ const retarget = (id: number) => ({ action: 'retarget', candidate: id });
 const refuse = (reason: string) => ({ action: 'refuse', reason });
 
 describe('decide', () => {
-  it('picks a lone control within 12 px', () => {
+  it('picks a lone control within 7.5 px', () => {
     expect(decide(features({ candidates: [candidate(0, 3)] }))).toEqual(retarget(0));
-    expect(decide(features({ candidates: [candidate(0, 12)] }))).toEqual(retarget(0));
+    expect(decide(features({ candidates: [candidate(0, 7.5)] }))).toEqual(retarget(0));
   });
 
   it('refuses when nothing is nearby', () => {
     expect(decide(features())).toEqual(refuse('no-candidate'));
   });
 
-  it('refuses when the nearest control is over 12 px away', () => {
-    expect(decide(features({ candidates: [candidate(0, 12.5)] }))).toEqual(refuse('too-far'));
+  it('refuses when the nearest control is over 7.5 px away', () => {
+    // The log holds nothing past 30 px. At 8 px a rival would have to be 32 px
+    // away to be far enough, and one at 31 px would not be in the log.
+    expect(decide(features({ candidates: [candidate(0, 8)] }))).toEqual(refuse('too-far'));
+    expect(decide(features({ candidates: [candidate(0, 12)] }))).toEqual(refuse('too-far'));
   });
 
-  it('refuses when the runner-up is less than twice as far', () => {
-    const close = [candidate(0, 4), candidate(1, 7.9)];
+  it('refuses when the page was changing just before the press', () => {
+    const candidates = [candidate(0, 3)];
+    expect(decide(features({ candidates, churn: true }))).toEqual(refuse('churn'));
+    // Not known is not the same as changing.
+    expect(decide(features({ candidates, churn: null }))).toEqual(retarget(0));
+  });
+
+  it('refuses a control the click landed inside of, since something covers it there', () => {
+    // A list row that scrolled under a sticky header. Its box starts 20 px above
+    // the click, which landed on the header's blank background.
+    const row = candidate(0, 0, { rect: { x: -200, y: -20, w: 600, h: 48 }, label: 'Open item' });
+    expect(decide(features({ candidates: [row] }))).toEqual(refuse('covered'));
+    // A card under an open menu, with a menu item farther off.
+    const card = candidate(0, 0, { rect: { x: -40, y: -30, w: 300, h: 120 }, label: 'Open card' });
+    expect(decide(features({ candidates: [card, candidate(1, 10)] }))).toEqual(refuse('covered'));
+    // A box is hit from its left and top edges up to, and not on, its right and
+    // bottom ones, as in a browser.
+    const corner = candidate(0, 0, { rect: { x: 0, y: 0, w: 80, h: 30 } });
+    expect(decide(features({ candidates: [corner] }))).toEqual(refuse('covered'));
+    const pastRight = candidate(0, 0, { rect: { x: -80, y: -15, w: 80, h: 30 } });
+    expect(decide(features({ candidates: [pastRight] }))).toEqual(retarget(0));
+    const pastBottom = candidate(0, 0, { rect: { x: -40, y: -30, w: 80, h: 30 } });
+    expect(decide(features({ candidates: [pastBottom] }))).toEqual(retarget(0));
+    // A click inside a canvas or an iframe region is refused as before, under its own reason.
+    const region = candidate(0, 0, { kind: 'opaque', rect: { x: -40, y: -30, w: 300, h: 120 } });
+    expect(decide(features({ candidates: [region] }))).toEqual(refuse('ambiguous'));
+  });
+
+  it('refuses when the runner-up is less than four times as far', () => {
+    const close = [candidate(0, 4), candidate(1, 15.9)];
     expect(decide(features({ candidates: close }))).toEqual(refuse('ambiguous'));
-    const clear = [candidate(0, 4), candidate(1, 8)];
+    const clear = [candidate(0, 4), candidate(1, 16)];
+    expect(decide(features({ candidates: clear }))).toEqual(retarget(0));
+  });
+
+  it('refuses when the runner-up is less than 8 px farther', () => {
+    const close = [candidate(0, 1), candidate(1, 8.9)];
+    expect(decide(features({ candidates: close }))).toEqual(refuse('ambiguous'));
+    const clear = [candidate(0, 1), candidate(1, 9)];
     expect(decide(features({ candidates: clear }))).toEqual(retarget(0));
   });
 
@@ -72,8 +110,46 @@ describe('decide', () => {
       const candidates = [candidate(0, 3, { label })];
       expect(decide(features({ candidates })), label).toEqual(refuse('irreversible'));
     }
+    // The noun forms, which name the thing a harmless-looking verb acts on.
+    for (const label of [
+      'Cancel subscription',
+      'Cancel booking',
+      'Cancel reservation',
+      'Make payment',
+      'Close account',
+      'Retweet',
+      // A button that reads as a state undoes it when clicked.
+      'Following',
+      'Subscribed',
+      // Things that reach other people at once.
+      'Share screen',
+      'Join call',
+      'Unmute',
+      'Record',
+      'Start recording',
+      'Hang up',
+      'Check out',
+      'Sign-out',
+      'Log off',
+      'Comment',
+      'Authorize app',
+      'Go live',
+    ]) {
+      const candidates = [candidate(0, 3, { label })];
+      expect(decide(features({ candidates })), label).toEqual(refuse('irreversible'));
+    }
+    // A word that only starts like one on the list is left alone.
+    expect(decide(features({ candidates: [candidate(0, 3, { label: 'Close' })] }))).toEqual(
+      retarget(0),
+    );
     const blanked = [candidate(0, 3, { label: 'Search for …', redacted: true })];
     expect(decide(features({ candidates: blanked }))).toEqual(refuse('irreversible'));
+    // A label of 40 characters may have been cut, with the word that matters past the cut:
+    // "Yes, I understand and I want to permanently delete this project".
+    const cut = [candidate(0, 3, { label: 'Yes, I understand and I want to permanen' })];
+    expect(decide(features({ candidates: cut }))).toEqual(refuse('irreversible'));
+    const whole = [candidate(0, 3, { label: 'Open the shared folder for this project' })];
+    expect(decide(features({ candidates: whole }))).toEqual(retarget(0));
     for (const label of ['Bookmarks', 'Likes and replies', 'Paying users', 'Open']) {
       const candidates = [candidate(0, 3, { label })];
       expect(decide(features({ candidates })), label).toEqual(retarget(0));
@@ -98,9 +174,22 @@ describe('decide', () => {
       ).toEqual(retarget(0));
     });
 
-    it('fires when the cursor was at rest', () => {
-      expect(decide(features({ candidates, path: [] }))).toEqual(retarget(0));
-      expect(decide(features({ candidates, path: path(0, 0) }))).toEqual(retarget(0));
+    it('refuses when the cursor was at rest, since a miss ends a movement', () => {
+      expect(decide(features({ candidates, path: [] }))).toEqual(refuse('rest'));
+      expect(decide(features({ candidates, path: path(0, 0) }))).toEqual(refuse('rest'));
+      expect(decide(features({ candidates, path: path(-1.5, 0) }))).toEqual(refuse('rest'));
+      expect(decide(features({ candidates, path: path(-2, 0) }))).toEqual(retarget(0));
+    });
+
+    it('reads a path of one sample by how far that sample was', () => {
+      // A cursor that arrived just inside the 300 ms leaves a single sample.
+      expect(decide(features({ candidates, path: path(-2) }))).toEqual(retarget(0));
+      expect(decide(features({ candidates, path: path(-1.5) }))).toEqual(refuse('rest'));
+    });
+
+    it('does not take the jitter of a resting hand for a movement', () => {
+      // A pixel back and forth covers 4 px and never leaves the click point's side.
+      expect(decide(features({ candidates, path: path(0, -1, 0, -1, 0) }))).toEqual(refuse('rest'));
     });
 
     it('refuses when the cursor moved away from the control', () => {

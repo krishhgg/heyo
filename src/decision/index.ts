@@ -1,13 +1,28 @@
 // The decision. A pure function from the logged features of one empty-space
 // click to a target or a refusal. The agent loop edits this module and nothing else.
 import { distanceToRect } from '../core/geometry';
-import type { Candidate, ClickFeatures, Decision, PathSample, RefuseReason } from '../core/types';
-
-/** The nearest control must be within this many px. */
-const MAX_DIST = 12;
+import {
+  LABEL_MAX,
+  SEARCH_RADIUS_PX,
+  type Candidate,
+  type ClickFeatures,
+  type Decision,
+  type PathSample,
+  type RefuseReason,
+} from '../core/types';
 
 /** The runner-up must be at least this many times as far as the nearest control. */
-const MARGIN = 2;
+const MARGIN = 4;
+
+/**
+ * The nearest control must be within this many px. Farther than that, a rival
+ * close enough to break the margin could sit past what the log holds, so the
+ * margin could not be checked.
+ */
+const MAX_DIST = SEARCH_RADIUS_PX / MARGIN;
+
+/** The runner-up must also be at least this many px farther than the nearest control. */
+const MIN_GAP = 8;
 
 /** Floor for the margin test, so two controls a hair apart stay ambiguous. */
 const MIN_DIST = 1;
@@ -20,6 +35,9 @@ const LONG_PRESS_MS = 500;
 
 /** The cursor moved away when it ended this many px farther from the control than it started. */
 const AWAY_PX = 2;
+
+/** A miss comes at the end of a movement. The cursor must have been this many px from the click point in the logged path. */
+const MIN_REACH = 2;
 
 /** Labels that suggest a click the user cannot take back. */
 const IRREVERSIBLE = [
@@ -41,6 +59,8 @@ const IRREVERSIBLE = [
   'purchase',
   'order',
   'checkout',
+  'check out',
+  'check-out',
   'donate',
   'transfer',
   'withdraw',
@@ -50,16 +70,40 @@ const IRREVERSIBLE = [
   'reserve',
   'subscribe',
   'unsubscribe',
+  'subscription',
+  'subscribed',
+  'booking',
+  'reservation',
+  'payment',
+  'close account',
   'upgrade',
   'send',
   'submit',
   'post',
+  'comment',
   'publish',
+  'broadcast',
+  'go live',
+  'authorize',
+  'allow',
+  'grant',
   'tweet',
+  'retweet',
+  'share screen',
+  'call',
+  'join',
+  'unmute',
+  'present',
+  'presenting',
+  'record',
+  'recording',
+  'hang up',
+  'terminate',
   'repost',
   'invite',
   'like',
   'follow',
+  'following',
   'unfollow',
   'vote',
   'upvote',
@@ -69,8 +113,12 @@ const IRREVERSIBLE = [
   'ban',
   'leave',
   'sign out',
+  'sign-out',
+  'signout',
   'log out',
+  'log off',
   'logout',
+  'logoff',
   'confirm',
   'approve',
   'reject',
@@ -87,9 +135,27 @@ function refuse(reason: RefuseReason): Decision {
   return { action: 'refuse', reason };
 }
 
-/** A label with a blanked part cannot be checked, so it counts as irreversible. */
+/**
+ * A label that cannot be read whole cannot be checked, so it counts as
+ * irreversible: one with a blanked part, or one long enough to have been cut,
+ * where the word that matters may be past the cut.
+ */
 function looksIrreversible(candidate: Candidate): boolean {
-  return candidate.redacted || IRREVERSIBLE_PATTERN.test(candidate.label);
+  return (
+    candidate.redacted ||
+    candidate.label.length >= LABEL_MAX ||
+    IRREVERSIBLE_PATTERN.test(candidate.label)
+  );
+}
+
+/**
+ * True when the click point lies inside the box the way a browser hit-tests
+ * it, with the right and bottom edges outside. The box is relative to the click.
+ */
+function holdsClick({ kind, rect }: Candidate): boolean {
+  // A click inside a canvas, video or iframe region is the opaque check's to answer.
+  if (kind !== 'control') return false;
+  return rect.x <= 0 && rect.x + rect.w > 0 && rect.y <= 0 && rect.y + rect.h > 0;
 }
 
 function inside(sample: PathSample, candidate: Candidate): boolean {
@@ -110,8 +176,22 @@ function movedAway(path: PathSample[], candidate: Candidate): boolean {
   return !overshot;
 }
 
+/**
+ * The farthest the cursor was from the click point over the logged path, in
+ * px. Distance covered would not do: a hand at rest jitters a pixel back and
+ * forth, and that adds up.
+ */
+function reach(path: PathSample[]): number {
+  let far = 0;
+  for (const sample of path) far = Math.max(far, Math.hypot(sample.x, sample.y));
+  return far;
+}
+
 export function decide(features: ClickFeatures): Decision {
   if (features.reacted) return refuse('reacted');
+  // The page was changing just before the press. What is nearest now may have
+  // moved under the cursor, and not be what the user aimed at.
+  if (features.churn === true) return refuse('churn');
   if (!features.focused) return refuse('unfocused');
   if (features.press.move > DRAG_PX) return refuse('drag');
   if (features.press.ms > LONG_PRESS_MS) return refuse('long-press');
@@ -119,17 +199,29 @@ export function decide(features: ClickFeatures): Decision {
   const byDist = [...features.candidates].sort((a, b) => a.dist - b.dist);
   const nearest = byDist[0];
   if (!nearest) return refuse('no-candidate');
+  // A click inside a control's box that did not reach the control landed on
+  // something that covers it, such as a sticky header over a list row or an
+  // open menu over a card, where the user was looking at the cover. Or it
+  // landed in the corner of a rounded control, outside its shape. The log
+  // cannot tell the two apart, so both are refused.
+  if (byDist.some(holdsClick)) return refuse('covered');
   if (nearest.dist > MAX_DIST) return refuse('too-far');
   // An opaque region competes for the click but can never be the target.
   if (nearest.kind === 'opaque') return refuse('ambiguous');
   const runnerUp = byDist[1];
-  if (runnerUp && runnerUp.dist < MARGIN * Math.max(nearest.dist, MIN_DIST)) {
+  if (
+    runnerUp &&
+    (runnerUp.dist < MARGIN * Math.max(nearest.dist, MIN_DIST) ||
+      runnerUp.dist - nearest.dist < MIN_GAP)
+  ) {
     return refuse('ambiguous');
   }
   if (nearest.disabled) return refuse('disabled');
   // A control with no name cannot be checked for what it does, and a reviewer cannot judge it.
   if (nearest.label === '') return refuse('unlabeled');
   if (looksIrreversible(nearest)) return refuse('irreversible');
+  // A click from a cursor at rest is not the end of an aimed movement.
+  if (reach(features.path) < MIN_REACH) return refuse('rest');
   if (movedAway(features.path, nearest)) return refuse('path');
 
   return { action: 'retarget', candidate: nearest.id };

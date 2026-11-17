@@ -50,10 +50,11 @@ A decision that returns anything other than a refusal or a logged control fails 
 
 `npm run synth` simulates one person clicking through made-up sites for 24 weeks. Because the generator knows what every click was for, it writes a review mark for every candidate of every record. That stands in for the hand review.
 
-Every number in `ASSUMPTIONS` in `synth/generate.ts` is a guess about behavior. Two matter most:
+Every number in `ASSUMPTIONS` in `synth/generate.ts` is a guess about behavior. Four matter most:
 
-- `spreadDivisor` sets how often an aimed click misses.
-- `deliberateNearShare` sets how often a deliberate click on empty space lands right beside a control. The wrong-target rate on a synthetic log follows almost directly from it, and nobody has measured it.
+- `spreadDivisor` sets how often an aimed click misses and how far, with `slipShare` for the rare wide miss. A click aimed at one control that lands nearer its neighbour is where most wrong fires come from, so this guess, together with how close the generator puts controls to each other, sets most of the wrong-target rate.
+- `deliberateNearShare` sets how often a deliberate click on empty space lands right beside a control. It sets the rest of the wrong-target rate, and nobody has measured it.
+- `deliberateResting` sets how many deliberate clicks come from a cursor at rest, and `dwellMedianMs` how long an aiming hand rests before it presses. The decision refuses a click from a still cursor, so these two set what that rule saves and what it costs.
 
 Presses land on whole pixels, and a box's right and bottom edges are outside it, as in a browser. A corrective movement heads for the target.
 
