@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { lintDecision } from './lint';
+// @ts-expect-error A build script in plain JavaScript, with no types of its own.
+import { CORE_FILES } from '../scripts/decision-version.mjs';
+import { ALLOWED_IMPORTS, lintDecision } from './lint';
 
 const coreDir = fileURLToPath(new URL('../src/core', import.meta.url));
 const shipped = fileURLToPath(new URL('../src/decision', import.meta.url));
@@ -29,6 +31,13 @@ function body(lines: string): string {
 }
 
 describe('the decision lint', () => {
+  it('allows the same core files the decision version is made from', () => {
+    // A core file the lint allowed and the version left out could change the
+    // decision without changing its version, and pages would act under it unjudged.
+    const hashed = (CORE_FILES as string[]).map((name) => `../core/${name.replace(/\.ts$/, '')}`);
+    expect([...ALLOWED_IMPORTS].sort()).toEqual(hashed.sort());
+  });
+
   it('passes the shipped decision', () => {
     expect(lintDecision(shipped, coreDir)).toEqual([]);
   });

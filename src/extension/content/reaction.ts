@@ -189,6 +189,11 @@ export class ReactionWatch {
     return { ...this.seen };
   }
 
+  /** A new watch over the same press, to go on watching after this one has stopped. */
+  again(): ReactionWatch {
+    return new ReactionWatch(this.path, this.candidates, this.roots);
+  }
+
   /** How many DOM changes were seen, and how many were on the press path or a candidate. Read it after stop. */
   get mutations(): { total: number; near: number } {
     return { total: this.total, near: this.nearCount };

@@ -35,11 +35,11 @@ describe('privacy', () => {
     }
   });
 
-  it('asks for no permissions beyond running its scripts on pages', () => {
+  it('asks for no permission beyond its own storage and running its scripts on pages', () => {
     const manifest = JSON.parse(
       readFileSync(join(src, 'extension/manifest.json'), 'utf8'),
     ) as Record<string, unknown>;
-    expect(manifest.permissions ?? []).toEqual([]);
+    expect(manifest.permissions ?? []).toEqual(['storage']);
     expect(manifest.host_permissions ?? []).toEqual([]);
     expect(manifest.externally_connectable).toBeUndefined();
   });

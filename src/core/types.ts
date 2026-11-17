@@ -181,6 +181,42 @@ export interface ClickRecord {
   /** Version of the extension that logged the click, so records can be told apart if the capture code changes. */
   extensionVersion: string;
   followUp: FollowUp | null;
+  /** What heyo did about this click while retargeting was on. Absent or null when it did nothing. */
+  fire?: Fire | null;
+}
+
+/** What heyo did about a would-be fire while retargeting was on for the site. */
+export interface Fire {
+  /**
+   * sent: heyo sent the click on to the target.
+   * held: heyo held this fire back as a control, so the user's own retry can still be measured.
+   * failed: the click could not be sent.
+   */
+  outcome: 'sent' | 'held' | 'failed';
+  /**
+   * Why the click was not sent. Only with outcome failed.
+   * gone: the control left the page or was disabled.
+   * moved: its box moved or changed size.
+   * renamed: its name changed.
+   * covered: something else was on top of it.
+   * unsupported: the control cannot be worked without real input.
+   * second-press: the user pressed a button or a key again first.
+   * reacted: the page did something, or began to leave, while heyo waited.
+   * off: retargeting was turned off while heyo waited.
+   * away: the window did not have focus when the click was due, or an embedded frame held it.
+   */
+  failure?:
+    | 'gone'
+    | 'moved'
+    | 'renamed'
+    | 'covered'
+    | 'unsupported'
+    | 'second-press'
+    | 'reacted'
+    | 'off'
+    | 'away';
+  /** The page reacted to the click heyo sent. Only with outcome sent. */
+  reacted?: boolean;
 }
 
 export type Verdict = 'right' | 'wrong' | 'unsure';

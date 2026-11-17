@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: controls a click can be sent on to</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      .at {
+        position: absolute;
+      }
+      button,
+      .item,
+      select,
+      input[type='text'] {
+        width: 80px;
+        height: 32px;
+        box-sizing: border-box;
+      }
+      .item {
+        cursor: pointer;
+        background: #dde;
+      }
+      a,
+      label,
+      summary {
+        display: block;
+        width: 80px;
+        height: 20px;
+      }
+      /* With ?noselect a second press selects no word, as on pages that turn selection off. */
+      body.noselect {
+        user-select: none;
+      }
+      /* With ?move or ?shrink, pointing at the zone moves or shrinks Mover without touching the DOM. */
+      body.move:has(#zone:hover) #mover {
+        left: 960px !important;
+      }
+      body.shrink:has(#zone:hover) #mover {
+        width: 40px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Every control sits at a known spot, 200 px apart, so a test can aim 4 px to its right. -->
+    <!-- Row 1 -->
+    <button id="plain" class="at" style="left: 100px; top: 100px">Plain</button>
+    <a id="hash" class="at" style="left: 300px; top: 100px" href="#linked">Hash link</a>
+    <label id="check-label" class="at" style="left: 500px; top: 100px"
+      ><input id="check" type="checkbox" /> Check</label
+    >
+    <input id="field" class="at" style="left: 700px; top: 100px" type="text" aria-label="Name" />
+    <details id="details" class="at" style="left: 900px; top: 100px">
+      <summary id="summary">More</summary>
+      Hidden text
+    </details>
+
+    <!-- Row 2 -->
+    <div id="root" class="at" style="left: 80px; top: 180px; width: 240px; height: 72px">
+      <div id="delegated" class="item at" data-action="delegated" style="left: 20px; top: 20px">
+        Delegated
+      </div>
+    </div>
+    <button id="pressed" class="at" style="left: 300px; top: 200px">Pressed</button>
+    <button id="picky" class="at" style="left: 500px; top: 200px">Picky</button>
+    <button id="popup" class="at" style="left: 700px; top: 200px">Popup</button>
+    <a id="tab" class="at" style="left: 900px; top: 200px" href="/basic.html" target="_blank"
+      >New tab</a
+    >
+
+    <!-- Row 3 -->
+    <input
+      id="file"
+      class="at"
+      style="left: 100px; top: 300px; width: 80px"
+      type="file"
+      aria-label="Upload"
+    />
+    <select id="select" class="at" style="left: 300px; top: 300px" aria-label="Size">
+      <option>Small</option>
+      <option>Large</option>
+    </select>
+    <button id="delete" class="at" style="left: 500px; top: 300px">Delete</button>
+    <form id="form" class="at" style="left: 700px; top: 300px">
+      <button id="submit" type="submit">Apply</button>
+    </form>
+    <button id="mover" class="at" style="left: 900px; top: 300px">Mover</button>
+
+    <!-- Row 4 -->
+    <div id="renamer" class="item at" role="button" tabindex="0" style="left: 100px; top: 400px">
+      Rename
+    </div>
+    <button id="vanisher" class="at" style="left: 300px; top: 400px">Vanisher</button>
+    <p id="status" class="at" style="left: 500px; top: 400px; margin: 0"></p>
+    <!-- An editor with no tabindex, which a real click still puts the cursor in. -->
+    <div
+      id="editor"
+      class="at"
+      contenteditable="true"
+      aria-label="Notes"
+      style="left: 700px; top: 400px; width: 80px; height: 32px; border: 1px solid #99a"
+    ></div>
+    <div id="zone" class="at" style="left: 900px; top: 480px; width: 80px; height: 32px"></div>
+    <!-- A frame of its own, well away from every control. A press in it never reaches the page's listeners. -->
+    <iframe
+      id="frame"
+      class="at"
+      style="left: 500px; top: 480px; width: 160px; height: 60px; border: 0"
+      srcdoc="<button style='width: 120px; height: 40px'>Inside</button>"
+    ></iframe>
+
+    <script>
+      // Everything a control did, in order. A test checks that the intended action happened exactly once.
+      const actions = [];
+      const on = (id, type, name) =>
+        document.getElementById(id).addEventListener(type, () => actions.push(name ?? id));
+
+      on('plain', 'click');
+      on('check', 'change');
+      on('field', 'focus');
+      on('details', 'toggle');
+      on('pressed', 'pointerdown');
+      on('delete', 'click');
+      on('file', 'click');
+      window.addEventListener('hashchange', () => actions.push(location.hash));
+
+      document.getElementById('form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        actions.push('submitted');
+      });
+
+      // One listener on a wrapper handles its children, the way React does.
+      document.getElementById('root').addEventListener('click', (event) => {
+        const action = event.target.closest('[data-action]')?.dataset.action;
+        if (action) actions.push(action);
+      });
+
+      // A page that only trusts real input.
+      document.getElementById('picky').addEventListener('click', (event) => {
+        if (event.isTrusted) actions.push('picky');
+      });
+
+      document.getElementById('popup').addEventListener('click', () => {
+        const opened = window.open('/basic.html', '_blank', 'popup,width=300,height=200');
+        actions.push(opened ? 'popup' : 'popup blocked');
+      });
+
+      document.getElementById('mover').addEventListener('click', () => actions.push('mover'));
+      on('renamer', 'click');
+
+      // A control that removes itself as it is pressed. A real press on it gets no click.
+      const vanisher = document.getElementById('vanisher');
+      vanisher.addEventListener('pointerdown', () => {
+        actions.push('vanished');
+        vanisher.remove();
+      });
+      vanisher.addEventListener('click', () => actions.push('vanisher clicked'));
+
+      // What the page does about a real click on empty space, by the words in the query string.
+      const modes = new URLSearchParams(location.search);
+      for (const mode of modes.keys()) document.body.classList.add(mode);
+      // ?nodown cancels a press on empty space, as pages do to keep a selection.
+      // Focus then stays where it was, in an embedded frame too.
+      if (modes.has('nodown')) {
+        document.addEventListener('mousedown', (event) => {
+          if (event.target === document.body) event.preventDefault();
+        });
+      }
+      document.addEventListener('click', (event) => {
+        if (!event.isTrusted || event.target !== document.body) return;
+        // ?late handles the click after a wait, longer than heyo gives a page to react.
+        if (modes.has('late')) {
+          setTimeout(() => (document.getElementById('status').textContent = 'handled'), 200);
+        }
+        // ?rename gives a control another name, in a new shadow root. A watch on
+        // the document sees neither the root nor the text put in it.
+        if (modes.has('rename')) {
+          document.getElementById('renamer').attachShadow({ mode: 'open' }).textContent =
+            'Delete all';
+        }
+      });
+    </script>
+  </body>
+</html>
