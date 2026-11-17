@@ -126,6 +126,23 @@ describe('several exports scored together', () => {
     expect(await clicksOf(olderFile, logFile)).toBe(alone);
     expect(await clicksOf(logFile, olderFile)).toBe(alone);
   });
+
+  it('add the clicks of logs that share no record, as two browsers on the same days do', async () => {
+    const other = generate({ ...DEFAULT_OPTIONS, days: 28, seed: 2 });
+    const otherFile = join(dir, 'other.json');
+    await writeFile(otherFile, JSON.stringify(other));
+    const rateOf = async (...files: string[]) => {
+      const { stdout } = await scorer('gates', ...files, '--json');
+      return (JSON.parse(stdout) as { missRate: { clicks: number; misses: number } }).missRate;
+    };
+    const [one, two, both] = [
+      await rateOf(logFile),
+      await rateOf(otherFile),
+      await rateOf(logFile, otherFile),
+    ];
+    expect(both.clicks).toBe(one.clicks + two.clicks);
+    expect(both.misses).toBe(one.misses + two.misses);
+  });
 });
 
 describe('the check that a locked-down process is off the network', () => {

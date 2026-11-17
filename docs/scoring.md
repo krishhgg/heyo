@@ -7,7 +7,7 @@ The offline scorer runs a decision module over an exported log and reports the n
 - From the extension: open the review page, choose `Numbers`, then `Export the log`. That saves `heyo-log-<date>.json`.
 - Synthetic, for trying things out: `npm run synth -- --out synth.json`.
 
-Several exports can be scored together. Records and review marks that appear in more than one file are counted once. Where two exports hold the same record or the same day's counts, the later export wins, whatever order the files are named in.
+Several exports can be scored together. Records and review marks that appear in more than one file are counted once. Where two exports hold the same record, the later export wins, whatever order the files are named in. Exports that share a record are taken as snapshots of one browser's log, and the later one's count of a day's clicks wins. Exports that share no record are taken as logs of different browsers, and their counts for a day are added. An export with no records is taken as an early snapshot of the one exported after it.
 
 ## Score it
 

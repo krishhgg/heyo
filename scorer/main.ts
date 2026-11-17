@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { dayOf } from '../src/core/days';
 import { missRateGate, retargetGates, type GateStatus } from '../src/core/gates';
 import { missRate, score, type Score } from '../src/core/metrics';
-import type { ClickFeatures, ClickRecord, Decision, LogExport } from '../src/core/types';
+import type { ClickFeatures, ClickRecord, DayCount, Decision, LogExport } from '../src/core/types';
 import { DEFAULT_OPTIONS, generate } from '../synth/generate';
 import { decideAll } from './decisions';
 import { splitter, type Split } from './split';
@@ -45,6 +45,60 @@ function parse(argv: string[]): Args {
   return { files, flags };
 }
 
+/**
+ * Groups exports into logs. Exports that share a record are snapshots of one
+ * browser's log. Exports that share none come from different browsers, or from
+ * different runs of the generator. An export with no records says nothing
+ * either way, and is taken as an early snapshot of the export after it.
+ */
+function sameLog(logs: LogExport[]): LogExport[][] {
+  const group = logs.map((_, i) => i);
+  const find = (i: number): number => {
+    while (group[i] !== i) i = group[i]!;
+    return i;
+  };
+  const firstWith = new Map<string, number>();
+  logs.forEach((log, i) => {
+    for (const { id } of log.records) {
+      const first = firstWith.get(id);
+      if (first === undefined) firstWith.set(id, i);
+      else group[find(i)] = find(first);
+    }
+    if (log.records.length === 0 && i + 1 < logs.length) group[find(i)] = find(i + 1);
+  });
+  const groups = new Map<number, LogExport[]>();
+  logs.forEach((log, i) => groups.set(find(i), [...(groups.get(find(i)) ?? []), log]));
+  return [...groups.values()];
+}
+
+/**
+ * The click counts of several exports. Within one log the later snapshot of a
+ * day wins, since it holds everything the earlier one did. Across logs the
+ * counts of a day are added, since each browser counted its own clicks.
+ */
+function mergeCounts(logs: LogExport[]): DayCount[] {
+  const total = new Map<string, DayCount>();
+  for (const snapshots of sameLog(logs)) {
+    const days = new Map(snapshots.flatMap((l) => l.counts).map((c) => [`${c.day}|${c.site}`, c]));
+    for (const [key, c] of days) {
+      const sum = total.get(key);
+      total.set(
+        key,
+        sum
+          ? {
+              ...c,
+              clicks: sum.clicks + c.clicks,
+              hits: sum.hits + c.hits,
+              emptyReacted: sum.emptyReacted + c.emptyReacted,
+              emptyIgnored: sum.emptyIgnored + c.emptyIgnored,
+            }
+          : c,
+      );
+    }
+  }
+  return [...total.values()];
+}
+
 /** Reads and merges exported logs. A record or review that appears twice is kept once. */
 export async function loadLogs(files: string[]): Promise<LogExport> {
   if (files.length === 0) throw new Error('Give at least one exported log file.');
@@ -65,13 +119,12 @@ export async function loadLogs(files: string[]): Promise<LogExport> {
       .sort((a, b) => a.t - b.t)
       .map((r) => [`${r.recordId}:${r.candidate}`, r]),
   );
-  const counts = new Map(logs.flatMap((l) => l.counts).map((c) => [`${c.day}|${c.site}`, c]));
   return {
     ...logs.at(-1)!,
     exportedAt: Math.max(...logs.map((l) => l.exportedAt)),
     records: [...records.values()].sort((a, b) => a.t - b.t),
     reviews: [...reviews.values()],
-    counts: [...counts.values()],
+    counts: mergeCounts(logs),
   };
 }
 
