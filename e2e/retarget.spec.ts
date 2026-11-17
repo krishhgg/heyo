@@ -396,7 +396,7 @@ test.describe('waiting out the double-click interval', () => {
     await page.mouse.click(560, 500);
     expect(await outcome(page, worker)).toEqual({
       actions: [],
-      fire: { outcome: 'failed', failure: 'second-press' },
+      fire: { outcome: 'failed', failure: 'away' },
     });
   });
 
@@ -751,6 +751,35 @@ test.describe('the retargeting tab', () => {
     await expect(fire.getByRole('button', { name: 'Wrong', exact: true })).toBeVisible();
     await expect(review.getByRole('row', { name: /^Wrong-target rate/ })).toContainText('0 wrong');
     expect((await worker.evaluate(() => heyo.readSettings())).wrongReports).toHaveLength(0);
+  });
+
+  test('takes back what a report did when the report is taken back', async ({
+    page,
+    worker,
+    extensionId,
+    context,
+  }) => {
+    // A log just past the gates, where one wrong mark is enough to fail them.
+    await turnOnRetargeting(worker);
+    await page.goto('/replay.html');
+    await miss(page, 384, 110);
+
+    const review = await context.newPage();
+    await review.goto(`chrome-extension://${extensionId}/review.html`);
+    await review.getByRole('button', { name: /Retargeting/ }).click();
+    const fire = review.locator('.fires li');
+    await fire.getByRole('button', { name: 'Wrong', exact: true }).click();
+    await expect(review.getByRole('heading', { name: 'Retargeting is off' })).toBeVisible();
+    await expect(review.locator('.warning')).toContainText('wrong clicks you reported');
+
+    await fire.getByRole('button', { name: 'Not wrong' }).click();
+    await expect(review.locator('.warning')).toHaveCount(0);
+    await expect(review.getByRole('button', { name: 'Turn retargeting on' })).toBeEnabled();
+    expect(await worker.evaluate(() => heyo.readSettings())).toMatchObject({
+      mode: 'shadow',
+      offReason: null,
+      wrongReports: [],
+    });
   });
 
   test('says why when heyo turned retargeting off by itself', async ({

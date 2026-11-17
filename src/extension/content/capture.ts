@@ -319,7 +319,7 @@ export function startCapture(): void {
       // see. And while an embedded frame holds focus, a press or a key in it
       // never shows here, not even as the window losing focus.
       if (!document.hasFocus() || isFrame(deepActiveElement())) {
-        return report({ outcome: 'failed', failure: 'second-press' });
+        return report({ outcome: 'failed', failure: 'away' });
       }
       sendClick(control, candidate, { x: p.x, y: p.y }, report);
     };

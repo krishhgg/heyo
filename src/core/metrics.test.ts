@@ -100,10 +100,14 @@ describe('score', () => {
       ...many(200, () => record(far, hit(0, 20))),
     ];
     expect(score(shadow, [], nearest).recovery).toBeCloseTo(0.55);
-    // The same person for twice as long with retargeting on. Of 600 fires, 540
-    // are sent on and 60 are held back. The 400 refused misses are logged as before.
+    // The same person for twice as long with retargeting on. Of 600 planned
+    // fires 60 are held back. Of the other 540, 500 are sent on and 40 fail to
+    // go out, say for a second press, and the user's retry makes them misses
+    // again. The 400 refused misses are logged as before.
+    const failed = { outcome: 'failed' as const, failure: 'second-press' as const };
     const on = [
-      ...many(540, () => record(two, null, { fire: { outcome: 'sent' as const, reacted: true } })),
+      ...many(500, () => record(two, null, { fire: { outcome: 'sent' as const, reacted: true } })),
+      ...many(40, () => record(two, hit(0, 4), { fire: failed })),
       ...many(55, () => record(two, hit(0, 4), { fire: { outcome: 'held' as const } })),
       ...many(5, () => record(two, hit(1, 9), { fire: { outcome: 'held' as const } })),
       ...many(400, () => record(far, hit(0, 20))),
@@ -111,8 +115,10 @@ describe('score', () => {
     const both = score([...shadow, ...on], [], nearest);
     expect(both.misses).toBe(1500);
     expect(both.recovery).toBeCloseTo(0.55);
-    // Without the weight this would read 34%, and retargeting would turn itself off.
+    // Without the weight this would read 34%, and retargeting would turn itself
+    // off. With the failed fires counted beside the held ones it would read 56%.
     expect((275 + 55) / (500 + 60 + 400)).toBeLessThan(0.35);
+    expect((825 + 40) / (1500 + 40)).toBeGreaterThan(0.56);
   });
 
   it('counts fires followed by a second press in the same spot', () => {

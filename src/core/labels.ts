@@ -29,13 +29,16 @@ export const HELD_SHARE = 0.1;
 
 /**
  * How many labeled misses a record stands for. In shadow mode that is one or
- * none. With retargeting on, nine fires in ten are sent on and can no longer
- * be labeled, and the tenth is held back. A held miss stands for itself and
- * for the nine that were sent, or every number built on misses would sink the
- * moment retargeting started to work.
+ * none. With retargeting on, one planned fire in ten is held back, and the
+ * other nine are sent on and can no longer be labeled. A held miss stands for
+ * itself and for the nine planned in its place, or every number built on
+ * misses would sink the moment retargeting started to work. A planned fire
+ * that failed to go out is one of those nine, so it counts for nothing here,
+ * though the user retried it: the held miss already stands for it.
  */
 export function missWeight(record: ClickRecord): number {
   if (!isLabeledMiss(record)) return 0;
+  if (record.fire?.outcome === 'failed') return 0;
   return record.fire?.outcome === 'held' ? 1 / HELD_SHARE : 1;
 }
 

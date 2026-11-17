@@ -128,13 +128,22 @@ async function settle(
   reported: boolean,
   irreversible: boolean,
 ): Promise<Settings> {
+  const before = await readSettings();
   let change: Partial<Settings> = { wrongReports };
-  if (irreversible) {
-    change = { ...change, mode: 'shadow', offReason: 'irreversible' };
-  } else if (reported && wrongReports.length > GATES.maxWrongPerWeek) {
-    change = { ...change, mode: 'shadow', offReason: 'wrong-clicks' };
-  } else if ((await readSettings()).mode === 'retarget' && !(await gatesPass())) {
-    change = { ...change, mode: 'shadow', offReason: reported ? 'wrong-clicks' : 'gates' };
+  // heyo says why it turned retargeting off only when it did. A report made
+  // while retargeting was already off changes no reason.
+  if (before.mode === 'retarget') {
+    if (irreversible) {
+      change = { ...change, mode: 'shadow', offReason: 'irreversible' };
+    } else if (reported && wrongReports.length > GATES.maxWrongPerWeek) {
+      change = { ...change, mode: 'shadow', offReason: 'wrong-clicks' };
+    } else if (!(await gatesPass())) {
+      change = { ...change, mode: 'shadow', offReason: reported ? 'wrong-clicks' : 'gates' };
+    }
+  } else if (wrongReports.length === 0 && before.wrongReports.length > 0) {
+    // Every report was taken back, so the reason that named them goes too.
+    const named = before.offReason === 'wrong-clicks' || before.offReason === 'irreversible';
+    if (named) change = { ...change, offReason: null };
   }
   return writeSettings(change);
 }

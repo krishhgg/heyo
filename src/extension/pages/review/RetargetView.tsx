@@ -132,7 +132,8 @@ export function RetargetView({ log, score, settings, request }: Props) {
                   : `${percentBeside(gates.recovery.recovery, GATES.minRecovery, 0)} of ${gates.recovery.misses} misses`}
               </td>
               <td>
-                {100 * GATES.minRecovery}% or more, on {GATES.minMisses} misses or more
+                {100 * GATES.minRecovery}% or more, on {GATES.minMisses} misses or more. A miss held
+                back as a control counts as {1 / GATES.heldShare}
               </td>
               <td>
                 <span class={`status status-${gates.recovery.status}`}>

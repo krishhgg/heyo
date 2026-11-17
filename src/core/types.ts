@@ -203,9 +203,18 @@ export interface Fire {
    * second-press: the user pressed a button or a key again first.
    * reacted: the page did something, or began to leave, while heyo waited.
    * off: retargeting was turned off while heyo waited.
+   * away: the window did not have focus when the click was due, or an embedded frame held it.
    */
   failure?:
-    'gone' | 'moved' | 'renamed' | 'covered' | 'unsupported' | 'second-press' | 'reacted' | 'off';
+    | 'gone'
+    | 'moved'
+    | 'renamed'
+    | 'covered'
+    | 'unsupported'
+    | 'second-press'
+    | 'reacted'
+    | 'off'
+    | 'away';
   /** The page reacted to the click heyo sent. Only with outcome sent. */
   reacted?: boolean;
 }
