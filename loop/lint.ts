@@ -1,0 +1,294 @@
+// The lint for decision modules. The plan asks for a lint that rejects
+// hostnames, selectors and per-example constants, so a decision cannot be tuned
+// to one site, one element or one logged click. It also keeps the module a
+// small pure function.
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import ts from 'typescript';
+
+export interface Problem {
+  file: string;
+  line: number;
+  message: string;
+}
+
+export const LIMITS = {
+  /** A decision is a handful of rules. More than this is a lookup table. */
+  maxLines: 400,
+  /** Numbers get a few significant digits. More is a constant fitted to one example. */
+  maxSignificantDigits: 3,
+  maxNumbers: 60,
+  /** An array of numbers longer than this is a table. */
+  maxNumberArray: 8,
+  maxStringLength: 24,
+  /** Word lists, such as irreversible labels, may be long. Everything else may not. */
+  maxStrings: 160,
+} as const;
+
+/** Modules a decision may import, besides its own files. */
+const ALLOWED_IMPORTS = new Set(['../core/geometry', '../core/types']);
+
+/** Names that reach outside the function: I/O, time, randomness and the global object. */
+const FORBIDDEN_NAMES = new Set([
+  'process',
+  'globalThis',
+  'global',
+  'window',
+  'self',
+  'document',
+  'navigator',
+  'location',
+  'chrome',
+  'eval',
+  'Function',
+  'require',
+  'module',
+  'fetch',
+  'XMLHttpRequest',
+  'WebSocket',
+  'Date',
+  'performance',
+  'crypto',
+  'setTimeout',
+  'setInterval',
+  'queueMicrotask',
+  'localStorage',
+  'sessionStorage',
+  'indexedDB',
+  'console',
+  'Buffer',
+  'Deno',
+  'Bun',
+]);
+
+/** A plain lowercase word or phrase, such as a label keyword or a reason code. */
+const PLAIN_WORDS = /^[a-z][a-z -]*$/;
+
+/** Text that looks like a hostname, a URL, a file path or a CSS selector. */
+const HOSTNAME = /[a-z0-9-]\.[a-z]{2,}/i;
+const SELECTOR = /[#.][a-z_][\w-]*|\[[^\]]*[=~|^$*]|\w\s*>\s*\w|::?[a-z-]+\(|:\/\/|[@/]/i;
+
+function significantDigits(text: string): number {
+  const digits = text
+    .replace(/_/g, '')
+    .replace(/e[+-]?\d+$/i, '')
+    .replace('.', '');
+  return digits.replace(/^0+/, '').replace(/0+$/, '').length;
+}
+
+/** The files of a decision module: every .ts file under its folder, tests left out. */
+export function decisionFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true, recursive: true })
+    .filter((e) => e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.test.ts'))
+    .map((e) => join(e.parentPath, e.name))
+    .sort();
+}
+
+function lintFile(file: string, name: string, source: string, problems: Problem[]): void {
+  const tree = ts.createSourceFile(file, source, ts.ScriptTarget.ES2022, true);
+  const report = (node: ts.Node, message: string) => {
+    const { line } = tree.getLineAndCharacterOfPosition(node.getStart());
+    problems.push({ file: name, line: line + 1, message });
+  };
+  let numbers = 0;
+  let strings = 0;
+
+  const checkText = (node: ts.Node, text: string, what: string) => {
+    if (HOSTNAME.test(text)) report(node, `${what} looks like a hostname or a file name.`);
+    else if (SELECTOR.test(text)) report(node, `${what} looks like a selector, a URL or a path.`);
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      const from = node.moduleSpecifier;
+      if (from && ts.isStringLiteral(from)) {
+        const path = from.text.replace(/\.ts$/, '');
+        const own = path.startsWith('./') && !path.includes('..');
+        if (!own && !ALLOWED_IMPORTS.has(path)) {
+          report(
+            node,
+            `Import of "${from.text}". A decision may import only its own files, ../core/geometry and ../core/types.`,
+          );
+        }
+      }
+      // The module path is not a string constant of the decision. Skip it.
+      node.forEachChild((child) => {
+        if (child !== from) visit(child);
+      });
+      return;
+    }
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      report(node, 'Dynamic import.');
+    }
+    if (ts.isMetaProperty(node)) report(node, 'import.meta.');
+    if (ts.isIdentifier(node) && FORBIDDEN_NAMES.has(node.text)) {
+      const parent = node.parent;
+      const isMember =
+        (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+        (ts.isPropertyAssignment(parent) && parent.name === node) ||
+        (ts.isPropertySignature(parent) && parent.name === node);
+      if (!isMember)
+        report(
+          node,
+          `Use of "${node.text}". A decision is a pure function of the click's features.`,
+        );
+    }
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'Math' &&
+      node.name.text === 'random'
+    ) {
+      report(node, 'Math.random. A decision must give the same answer for the same click.');
+    }
+
+    if (ts.isNumericLiteral(node)) {
+      numbers++;
+      if (significantDigits(node.getText()) > LIMITS.maxSignificantDigits) {
+        report(
+          node,
+          `The number ${node.getText()} has more than ${LIMITS.maxSignificantDigits} significant digits. That reads as a constant fitted to one example.`,
+        );
+      }
+    }
+    if (ts.isBigIntLiteral(node)) report(node, 'BigInt literal.');
+    if (ts.isArrayLiteralExpression(node)) {
+      const numeric = node.elements.filter(
+        (e) =>
+          ts.isNumericLiteral(e) ||
+          (ts.isPrefixUnaryExpression(e) && ts.isNumericLiteral(e.operand)),
+      ).length;
+      if (numeric > LIMITS.maxNumberArray) {
+        report(node, `An array of ${numeric} numbers. That reads as a lookup table.`);
+      }
+    }
+
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      strings++;
+      const text = node.text;
+      if (text.length > LIMITS.maxStringLength) {
+        report(
+          node,
+          `A string of ${text.length} characters. Strings in a decision are short keywords.`,
+        );
+      } else if (text !== '' && !PLAIN_WORDS.test(text)) {
+        checkText(node, text, 'This string');
+        if (/[A-Z]/.test(text) || /\d/.test(text)) {
+          report(
+            node,
+            `The string "${text}" has capitals or digits. Compare labels in lower case against plain keywords.`,
+          );
+        }
+      }
+    }
+    if (ts.isTemplateExpression(node)) {
+      const chunks = [node.head.text, ...node.templateSpans.map((span) => span.literal.text)];
+      for (const chunk of chunks) {
+        checkText(node, chunk, 'This template');
+        if (/[A-Za-z]{2,}/.test(chunk.replace(/\\[bBdDsSwW]/g, ''))) {
+          report(node, 'A template with words in it. Put keywords in a plain string list.');
+        }
+      }
+    }
+    if (ts.isRegularExpressionLiteral(node)) {
+      const body = node.text.slice(1, node.text.lastIndexOf('/'));
+      checkText(node, body, 'This pattern');
+      if (/[A-Za-z]{4,}/.test(body.replace(/\\[bBdDsSwW]/g, ''))) {
+        report(node, 'A pattern with words in it. Put keywords in a plain string list.');
+      }
+    }
+    node.forEachChild(visit);
+  };
+  visit(tree);
+
+  if (numbers > LIMITS.maxNumbers) {
+    problems.push({
+      file: name,
+      line: 1,
+      message: `${numbers} numbers. A decision gets at most ${LIMITS.maxNumbers}.`,
+    });
+  }
+  if (strings > LIMITS.maxStrings) {
+    problems.push({
+      file: name,
+      line: 1,
+      message: `${strings} strings. A decision gets at most ${LIMITS.maxStrings}.`,
+    });
+  }
+}
+
+/** Type-checks the decision against the repo's own core types. */
+function typeCheck(files: string[], dir: string, coreDir: string, problems: Problem[]): void {
+  const options: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    strict: true,
+    noUncheckedIndexedAccess: true,
+    noEmit: true,
+    skipLibCheck: true,
+    types: [],
+    lib: ['lib.es2023.d.ts'],
+  };
+  const host = ts.createCompilerHost(options);
+  // "../core/x" always means the repo's core, whatever sits beside the decision.
+  host.resolveModuleNames = (names, containing) =>
+    names.map((name) => {
+      const core = /^\.\.\/core\/([\w-]+)(\.ts)?$/.exec(name);
+      if (core)
+        return { resolvedFileName: join(coreDir, `${core[1]}.ts`), extension: ts.Extension.Ts };
+      return ts.resolveModuleName(name, containing, options, host).resolvedModule;
+    });
+  const program = ts.createProgram(files, options, host);
+  for (const diagnostic of ts.getPreEmitDiagnostics(program)) {
+    const file = diagnostic.file;
+    if (file && !file.fileName.startsWith(dir)) continue;
+    const line =
+      file && diagnostic.start !== undefined
+        ? file.getLineAndCharacterOfPosition(diagnostic.start).line + 1
+        : 1;
+    problems.push({
+      file: file ? relative(dir, file.fileName) : '',
+      line,
+      message: `Type error: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')}`,
+    });
+  }
+  const index = program.getSourceFile(join(dir, 'index.ts'));
+  const exportsDecide = index
+    ? program
+        .getTypeChecker()
+        .getExportsOfModule(program.getTypeChecker().getSymbolAtLocation(index)!)
+        .some((symbol) => symbol.name === 'decide')
+    : false;
+  if (!exportsDecide) {
+    problems.push({
+      file: 'index.ts',
+      line: 1,
+      message: 'index.ts must export a function named decide.',
+    });
+  }
+}
+
+/** Lints the decision module in a folder. `coreDir` is the repo's src/core. */
+export function lintDecision(dir: string, coreDir: string): Problem[] {
+  const problems: Problem[] = [];
+  const files = decisionFiles(dir);
+  if (!files.includes(join(dir, 'index.ts'))) {
+    return [{ file: 'index.ts', line: 1, message: 'The decision folder has no index.ts.' }];
+  }
+  let lines = 0;
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8');
+    lines += source.split('\n').length;
+    lintFile(file, relative(dir, file), source, problems);
+  }
+  if (lines > LIMITS.maxLines) {
+    problems.push({
+      file: '',
+      line: 1,
+      message: `${lines} lines. A decision gets at most ${LIMITS.maxLines}.`,
+    });
+  }
+  if (problems.length === 0) typeCheck(files, dir, coreDir, problems);
+  return problems;
+}
