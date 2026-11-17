@@ -73,6 +73,8 @@ test.describe('the review page', () => {
     const row = (name: string) => page.getByRole('row', { name: new RegExp(`^${name}`) });
     await expect(row('Fires you reviewed')).toContainText('2 (1 wrong)');
     await expect(row('Fires you reviewed')).toContainText('473 with 1 wrong');
+    // One wrong in two is over the limit, and more marks can still bring the bound down.
+    await expect(row('Wrong-target rate, upper bound')).toContainText('Fail so far');
     await expect(row('Fires you marked not sure')).toContainText('1');
 
     const log = await readLog(worker);

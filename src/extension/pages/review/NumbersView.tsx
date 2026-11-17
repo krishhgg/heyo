@@ -28,8 +28,10 @@ const STATUS_WORDS: Record<GateStatus, string> = {
   inconclusive: 'Not enough data yet',
 };
 
-function Status({ status }: { status: GateStatus }) {
-  return <span class={`status status-${status}`}>{STATUS_WORDS[status]}</span>;
+/** `soFar` marks a fail that more review marks can still turn around. */
+function Status({ status, soFar }: { status: GateStatus; soFar?: boolean }) {
+  const words = status === 'fail' && soFar ? 'Fail so far' : STATUS_WORDS[status];
+  return <span class={`status status-${status}`}>{words}</span>;
 }
 
 function percent(value: number | null, digits = 1): string {
@@ -43,13 +45,14 @@ function Row(props: {
   needs?: string;
   note?: string;
   status?: GateStatus;
+  soFar?: boolean;
 }) {
   return (
     <tr>
       <th scope="row">{props.name}</th>
       <td class="num">{props.value}</td>
       {props.note ? <td class="note">{props.note}</td> : <td>{props.needs}</td>}
-      <td>{props.status && <Status status={props.status} />}</td>
+      <td>{props.status && <Status status={props.status} soFar={props.soFar} />}</td>
     </tr>
   );
 }
@@ -107,6 +110,8 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
   const recovery = recoveryGate(score);
   const wrong = wrongTargetGate(score);
   const doubleShare = score.fires > 0 ? score.doublePress / score.fires : null;
+  // With few marks the bound can sit over the limit and still come down as marks come in.
+  const wrongSoFar = wrong.status === 'fail' && wrong.reviewed < wrong.needed;
 
   return (
     <section class="numbers">
@@ -179,6 +184,7 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
                   ? 'fail'
                   : 'inconclusive'
             }
+            soFar={wrongSoFar && recovery.status !== 'fail'}
           />
         </header>
         <p class="sheet-note">
@@ -222,6 +228,7 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
               value={percentBeside(wrong.upper, GATES.maxWrongRate)}
               needs={`under ${100 * GATES.maxWrongRate}%`}
               status={wrong.status}
+              soFar={wrongSoFar}
             />
             <Row
               name="Fires followed by a second press"

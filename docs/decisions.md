@@ -121,6 +121,7 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - Every number shown beside a limit gets as many decimals as it takes to tell it from that limit. At 299 marks with none wrong the bound reads 0.997%, and 124 recovered of 250 reads 49.6%.
 - The review screen shows only how many fires are marked and how many wait. The count the gate needs and the wrong marks are on the numbers page. On the review screen one wrong mark would visibly raise the target from 299 to 473, which is a reason to press something else.
 - The three answers are drawn with the same weight. A filled button marks only what the reviewer chose earlier, on a click they came back to.
+- With few marks the wrong-target bound can sit over 1% and still come down as marks come in. The page words that as "Fail so far", and as "Fail" once the needed number of marks is in.
 - The numbers page lists the fires marked not sure. They are left out of the wrong-target rate, and they are the hard cases, so a large count has to be visible.
 - An export reads the store again first, so it holds clicks logged since the page was opened.
 - The drawing shows 56 px on each side of the click at a fixed scale, so distances look the same from one click to the next.

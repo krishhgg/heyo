@@ -311,10 +311,11 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
             >
               {name}
             </h2>
+            {/* The distance comes first, so a long kind is what gets cut, never the distance. */}
             <p class="target-kind">
-              {kindOf(picked)}
-              <span class="sep"> · </span>
               <span class="num">{picked.dist}</span> px away
+              <span class="sep"> · </span>
+              {kindOf(picked)}
             </p>
           </div>
 
