@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: forms</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      .at {
+        position: absolute;
+      }
+      button,
+      select,
+      .combo {
+        width: 120px;
+        height: 32px;
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Row 1: a native dropdown, and a button beside it. -->
+    <select id="sort" class="at" style="left: 100px; top: 100px" aria-label="Sort by">
+      <option>Newest</option>
+      <option>Oldest</option>
+    </select>
+    <button id="apply" class="at" style="left: 300px; top: 100px">Apply</button>
+
+    <!-- Row 2: a dropdown built from a div, showing its choice, and a button that shares a word with it. -->
+    <div id="combo" class="combo at" role="combobox" tabindex="0" style="left: 100px; top: 200px">
+      Monthly
+    </div>
+    <button id="report" class="at" style="left: 300px; top: 200px">Monthly report</button>
+
+    <!-- Row 3: a checkbox inside a padded label. -->
+    <label id="plan" class="at" style="left: 100px; top: 300px; padding: 8px 12px; background: #eee"
+      ><input id="plan-box" type="checkbox" /> Yearly</label
+    >
+
+    <!-- Row 4: a long answer, and a button that repeats its last word. -->
+    <textarea
+      id="answer"
+      class="at"
+      style="left: 100px; top: 400px; width: 200px; height: 60px"
+    ></textarea>
+    <button id="suggest" class="at" style="left: 400px; top: 400px; width: 200px">
+      Use nothing
+    </button>
+
+    <!-- Row 5: an icon button named by another element, and a disabled checkbox inside a label. -->
+    <span id="next-name" class="at" style="left: 100px; top: 540px">Next page</span>
+    <button
+      id="next"
+      class="at"
+      style="left: 300px; top: 532px; width: 32px"
+      aria-labelledby="next-name"
+    >
+      <svg width="12" height="12"><rect width="12" height="12" /></svg>
+    </button>
+    <label
+      id="locked"
+      class="at"
+      style="left: 500px; top: 532px; padding: 8px 12px; background: #eee"
+      ><input id="locked-box" type="checkbox" disabled /> Locked</label
+    >
+
+    <!-- Row 6: the read-only input a dropdown library keeps focus in after a pick. -->
+    <input
+      id="picked"
+      class="at"
+      style="left: 100px; top: 640px; width: 120px; height: 32px; box-sizing: border-box"
+      readonly
+      value="Weekly"
+      aria-label="Schedule"
+    />
+    <button id="keep" class="at" style="left: 300px; top: 640px">Keep</button>
+
+    <script>
+      const answer = document.getElementById('answer');
+      answer.addEventListener('input', () => {
+        const words = answer.value.trim().split(/\s+/);
+        document.getElementById('suggest').textContent = `Use ${words.at(-1) || 'nothing'}`;
+      });
+    </script>
+  </body>
+</html>

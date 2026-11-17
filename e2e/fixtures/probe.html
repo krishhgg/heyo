@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: a page that pokes at the extension</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+      }
+      button {
+        position: absolute;
+        left: 100px;
+        top: 100px;
+        width: 80px;
+        height: 32px;
+      }
+    </style>
+  </head>
+  <body>
+    <button id="go">Go</button>
+    <script>
+      window.probe = { names: [], clicks: 0, error: null };
+
+      // Try to get the extension to hand over its private event name.
+      window.addEventListener('heyo:init', (event) => window.probe.names.push(event.detail), true);
+      window.dispatchEvent(new Event('heyo:main-ready'));
+
+      // Break the built-ins the extension's wrapper might lean on, then add a listener.
+      try {
+        window.Reflect = {};
+        WeakSet.prototype.add = () => {
+          throw new Error('patched');
+        };
+        WeakSet.prototype.has = () => {
+          throw new Error('patched');
+        };
+        Set.prototype.has = () => {
+          throw new Error('patched');
+        };
+        document.getElementById('go').addEventListener('click', () => window.probe.clicks++);
+      } catch (error) {
+        window.probe.error = String(error);
+      }
+    </script>
+  </body>
+</html>

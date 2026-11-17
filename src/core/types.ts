@@ -26,6 +26,8 @@ export interface Candidate {
   signals: ClickSignal[];
   /** Accessible name or visible text, at most 40 characters. Never a field's value. */
   label: string;
+  /** Part of the label matched text typed into a field on the page and was blanked. */
+  redacted: boolean;
   disabled: boolean;
 }
 
@@ -40,8 +42,11 @@ export interface PathSample {
 
 /** What the page did between the press and about 50 ms after the click. */
 export interface Reaction {
+  /** The DOM changed. */
   mutation: boolean;
+  /** Focus moved into an element, or out of a field the user can type in. */
   focus: boolean;
+  /** The visible text selection changed. */
   selection: boolean;
   scroll: boolean;
   navigation: boolean;
@@ -71,10 +76,40 @@ export interface ClickFeatures {
   /** True when any field of reaction is true. */
   reacted: boolean;
   reaction: Reaction;
+  /**
+   * The click moved focus the way Chrome does on its own: off a control that is
+   * not a text field, such as the button the user clicked before, or onto a
+   * focusable container around the click. This does not count as a reaction.
+   */
+  blurred: boolean;
+  /**
+   * Focus left a field the user types in. This counts as a focus reaction. It
+   * is logged on its own because typing and then missing the next button is a
+   * likely miss, and a later analysis may want to count it.
+   */
+  leftField: boolean;
+  /**
+   * How many DOM changes the page made between the press and the settle time,
+   * and how many of those touched the element under the pointer, one of its
+   * ancestors, or a candidate. A change far from the click is weaker evidence
+   * that the page answered it.
+   */
+  mutations: { total: number; near: number };
+  /**
+   * The DOM was already changing in the 300 ms before the press, so a mutation
+   * after it may be the page's own background activity. Null when heyo was not
+   * watching for that whole time.
+   */
+  churn: boolean | null;
   under: Under;
   /** The click point in viewport coordinates. */
   point: Point;
   viewport: { w: number; h: number };
+  /**
+   * Screen px per CSS px, which is the display's scale times the page zoom.
+   * Every distance in the log is in CSS px. At 125% zoom, 12 of them cover 15 on screen.
+   */
+  scale: number;
   /** The click happened in the top frame, not an iframe. */
   topFrame: boolean;
   /** How many nodes on the click's event path, window and document included, have a click-type listener. */
@@ -90,6 +125,7 @@ export type RefuseReason =
   | 'too-far'
   | 'ambiguous'
   | 'disabled'
+  | 'unlabeled'
   | 'irreversible'
   | 'path';
 
@@ -116,7 +152,11 @@ export interface FollowUp {
   dist: number | null;
 }
 
-/** One empty-space click that had at least one candidate nearby. */
+/**
+ * One empty-space click. It had at least one candidate nearby, or it had none
+ * and the user then clicked a control within the miss radius that the search
+ * had not seen.
+ */
 export interface ClickRecord {
   v: 1;
   id: string;
@@ -129,6 +169,8 @@ export interface ClickRecord {
   decision: Decision;
   /** Version of the decision module that produced decision. */
   decisionVersion: string;
+  /** Version of the extension that logged the click, so records can be told apart if the capture code changes. */
+  extensionVersion: string;
   followUp: FollowUp | null;
 }
 

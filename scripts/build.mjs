@@ -2,6 +2,7 @@
 import { build } from 'esbuild';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { decisionVersion } from './decision-version.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const out = `${root}dist/extension`;
@@ -19,6 +20,7 @@ await build({
   entryPoints: {
     background: 'src/extension/background/index.ts',
     content: 'src/extension/content/index.ts',
+    'main-world': 'src/extension/main-world/index.ts',
   },
   outdir: out,
   bundle: true,
@@ -26,6 +28,7 @@ await build({
   target: 'chrome120',
   legalComments: 'none',
   logLevel: 'warning',
+  define: { __HEYO_DECISION_VERSION__: JSON.stringify(await decisionVersion()) },
 });
 
 console.log(`Built heyo ${manifest.version} into dist/extension`);

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: iframe</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      iframe {
+        position: absolute;
+        left: 50px;
+        top: 50px;
+        width: 600px;
+        height: 400px;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The frame loads from another hostname, so the test can tell the page's site from the frame's. -->
+    <iframe id="frame"></iframe>
+    <script>
+      document.getElementById('frame').src = `http://localhost:${location.port}/basic.html`;
+    </script>
+  </body>
+</html>
