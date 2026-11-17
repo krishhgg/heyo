@@ -45,6 +45,8 @@ export async function drive({ page, context, worker, baseUrl, evidence, log }) {
   while ((await review.locator('.plate').count()) > 0) {
     await review.keyboard.press('y');
     await review.locator('.stamp').waitFor({ state: 'detached' });
+    // The page takes the next mark only after the next click has had its moment.
+    await review.locator('.verdicts[aria-busy="false"], .empty').first().waitFor();
     marked++;
   }
   log(`marked ${marked} would-be fires right in the review page`);
