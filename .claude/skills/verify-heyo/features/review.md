@@ -34,6 +34,6 @@ Preconditions:
 - Playwright cannot click Chrome's toolbar. The drive calls `heyo.openReview()` in the service worker, which is the function the toolbar button's listener calls.
 - Keys are ignored while the verdict stamp shows and for 300 ms after the next click comes up. Wait for `.verdicts[aria-busy="false"]`, or for `.empty` after the last click, before the next key.
 - The review order is a hash of the record id, so which fire comes first differs between runs. Read the target's name from `.target` instead of assuming an order.
-- The review screen shows only how many fires are marked and how many wait. The count the gate needs, the wrong marks and the not-sure marks are on the `Numbers` tab, where it reads `299 with this many wrong` with none wrong and `473` after one.
+- The review screen shows only how many fires are marked and how many wait. The count the gate needs, the wrong marks and the not-sure marks are on the `Numbers` tab, where it reads `299 with none wrong` and, after one wrong mark, `473 with 1 wrong`.
 - The delete button ignores clicks for 600 ms after it appears, and Playwright waits that out. A test of an early click passes `force: true`.
 - A changed mark replaces the old one. The drive asserts that the exported marks equal the stored ones.

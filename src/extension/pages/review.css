@@ -151,11 +151,35 @@ code {
   padding-top: 28px;
 }
 
+/*
+ * The drawing is a square as wide as --plate, which is never more than the
+ * window leaves room for. The answers sit beside it, and the legend under it.
+ */
 .bench {
+  --plate: min(520px, calc(100vw - 440px), max(240px, calc(100vh - 170px)));
+  --name-max: 44px;
   display: grid;
-  grid-template-columns: minmax(0, 520px) minmax(280px, 1fr);
-  gap: 36px;
+  grid-template-columns: var(--plate) minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    'plate call'
+    'legend call';
+  gap: 0 36px;
   align-items: start;
+}
+
+.plate-frame {
+  grid-area: plate;
+}
+
+.legend {
+  grid-area: legend;
+}
+
+.call {
+  grid-area: call;
+  /* The name is sized against this column's width. */
+  container-type: inline-size;
 }
 
 .legend {
@@ -209,8 +233,6 @@ code {
 
 .plate-frame {
   position: relative;
-  /* The drawing never grows taller than the window leaves room for. */
-  width: min(100%, max(240px, calc(100vh - 170px)));
   border: 1.5px solid var(--ink);
   border-radius: 6px;
   overflow: hidden;
@@ -367,9 +389,13 @@ code {
   padding-top: 4px;
 }
 
-/* Room for a name of two lines, so the answer buttons sit in the same place for every click. */
+/*
+ * One height for every click: a line above, two lines of the largest name and
+ * one line below. The answers under it never move.
+ */
 .pick {
-  min-height: 150px;
+  height: calc(2 * 1.08 * var(--name-max) + 58px);
+  overflow: hidden;
 }
 
 .eyebrow {
@@ -379,7 +405,8 @@ code {
 .target {
   --casl: 1;
   margin-top: 2px;
-  font-size: 44px;
+  /* --fit is set from the name's length, so a long name shrinks until it fits in two lines. */
+  font-size: clamp(18px, calc(var(--fit, 100) * 1cqw), var(--name-max));
   font-weight: 850;
   line-height: 1.08;
   letter-spacing: -0.015em;
@@ -394,6 +421,9 @@ code {
 
 .target-kind {
   margin-top: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .facts {
@@ -480,6 +510,12 @@ code {
 
 .verdict:hover {
   transform: translateY(-1px);
+}
+
+/* Not taking a mark for a moment. Nothing dims, so the page does not flicker 300 times. */
+.verdicts[aria-busy='true'] .verdict {
+  cursor: default;
+  transform: none;
 }
 
 /* Filled means "this is what you marked", on a click the reviewer came back to. */
@@ -770,12 +806,9 @@ td.num {
 
   /* Still side by side, with a smaller drawing, so nothing needs scrolling. */
   .bench {
-    grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
-    gap: 24px;
-  }
-
-  .target {
-    font-size: 34px;
+    --plate: min(44vw, max(220px, calc(100vh - 200px)));
+    --name-max: 34px;
+    gap: 0 24px;
   }
 
   .sheet {
@@ -805,25 +838,30 @@ td.num {
     padding: 0;
     border: 0;
   }
+
+  /* The header row is gone, so the limit says what it is. */
+  td:nth-child(3):not(:empty)::before {
+    content: 'Needs ';
+    color: var(--graphite);
+  }
 }
 
 @media (max-width: 640px) {
+  /* Stacked: the drawing, then the name and the answers, then the legend. */
   .bench {
+    --plate: min(100%, max(180px, calc(100vh - 420px)));
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      'plate'
+      'call'
+      'legend';
+    gap: 16px 0;
   }
 
-  /* The drawing stays small enough that the buttons under it are on screen too. */
   .plate-frame {
-    width: min(100%, max(200px, calc(100vh - 500px)));
+    width: var(--plate);
     margin-inline: auto;
-  }
-
-  .legend {
-    justify-content: center;
-  }
-
-  .pick {
-    min-height: 122px;
   }
 
   .verdicts {

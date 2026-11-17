@@ -195,7 +195,7 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
             <Row
               name="Fires you reviewed"
               value={`${wrong.reviewed} (${wrong.wrong} wrong)`}
-              needs={`${wrong.needed} with this many wrong`}
+              needs={`${wrong.needed} with ${wrong.wrong === 0 ? 'none' : wrong.wrong} wrong`}
             />
             <Row
               name="Fires you marked not sure"

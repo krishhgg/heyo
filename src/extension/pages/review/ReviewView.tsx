@@ -84,6 +84,10 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
   const frame = useRef<HTMLDivElement>(null);
   /** What the click on screen was marked before the mark being stamped now. */
   const before = useRef<Verdict | undefined>(undefined);
+  /** True when Z was pressed while a mark was being stamped. The stamped click then stays up. */
+  const stay = useRef(false);
+  /** The timer that ends the look time of the click on screen. */
+  const look = useRef<number | undefined>(undefined);
 
   const index = fires.findIndex((f) => reviewKey(f) === at);
   const fire = index >= 0 ? fires[index] : undefined;
@@ -94,7 +98,7 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
   // deleted. Pick one up whenever there is nothing on screen.
   useEffect(() => {
     if (!fire && !busy.current) setAt(firstUnreviewed(fires, done));
-  }, [fires, verdicts, at]);
+  }, [fires, verdicts, at, settling]);
 
   // In a small window the reviewer scrolls down to the buttons. The next drawing
   // has to come back into view, or it would be marked unseen.
@@ -102,14 +106,17 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
     frame.current?.scrollIntoView({ block: 'nearest' });
   }, [at]);
 
+  const release = () => {
+    window.clearTimeout(look.current);
+    busy.current = false;
+    setSettling(false);
+  };
+
   const mark = (verdict: Verdict) => {
     if (!active || !fire || busy.current) return;
     busy.current = true;
+    stay.current = false;
     setSettling(true);
-    const release = () => {
-      busy.current = false;
-      setSettling(false);
-    };
     const key = reviewKey(fire);
     before.current = verdicts.get(key);
     setUnsaved(false);
@@ -118,11 +125,16 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
     const shown = new Promise((resolve) => window.setTimeout(resolve, STAMP_MS));
     void Promise.all([onVerdict(fire, verdict), shown]).then(
       () => {
+        setStamp(null);
+        if (stay.current) {
+          // Z came during the stamp. The click just marked stays up, to be marked again.
+          release();
+          return;
+        }
         setTrail((t) => [...t.filter((k) => k !== key), key]);
         setAt(firstUnreviewed(fires, (k) => k === key || done(k), index));
-        setStamp(null);
         // The next click has to be looked at before it can be marked.
-        window.setTimeout(release, LOOK_MS);
+        look.current = window.setTimeout(release, LOOK_MS);
       },
       () => {
         // The mark was not stored, so the click stays where it is.
@@ -133,10 +145,17 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
     );
   };
 
+  // Going back marks nothing, so it is never locked out. A reviewer who mis-taps
+  // reaches for Z at once, and a dropped Z would send the next key to the wrong click.
   const back = () => {
-    if (!active || busy.current) return;
+    if (!active) return;
+    if (stamp) {
+      stay.current = true;
+      return;
+    }
     const previous = live.at(-1);
     if (!previous) return;
+    release();
     setTrail(live.filter((k) => k !== previous));
     setAt(previous);
   };
@@ -222,35 +241,42 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
   const noRepeat = (event: KeyboardEvent) => {
     if (event.repeat) event.preventDefault();
   };
+  // A mouse click leaves focus on the answer with no ring to show it. Space,
+  // pressed to scroll, would then mark the next click. A click made with the
+  // keyboard keeps its focus.
+  const answer = (verdict: Verdict) => (event: MouseEvent) => {
+    if (event.detail > 0) (event.currentTarget as HTMLElement).blur();
+    mark(verdict);
+  };
+  const name = nameOf(picked);
 
   return (
     <section class="review">
       <div class="bench">
-        <div class="drawing">
-          <div class="plate-frame" ref={frame}>
-            <Plate fire={fire} />
-            {stamp && <div class={`stamp stamp-${stamp}`}>{VERDICT_WORDS[stamp]}</div>}
-          </div>
-          <ul class="legend" aria-label="What the drawing shows">
-            <li class="legend-click">your click</li>
-            <li class="legend-pick">heyo's pick</li>
-            <li class="legend-near">other controls</li>
-            <li class="legend-opaque">an iframe, video or canvas</li>
-            <li class="legend-path">the pointer's path</li>
-          </ul>
+        <div class="plate-frame" ref={frame}>
+          <Plate fire={fire} />
+          {stamp && <div class={`stamp stamp-${stamp}`}>{VERDICT_WORDS[stamp]}</div>}
         </div>
+        <ul class="legend" aria-label="What the drawing shows">
+          <li class="legend-click">your click</li>
+          <li class="legend-pick">heyo's pick</li>
+          <li class="legend-near">other controls</li>
+          <li class="legend-opaque">an iframe, video or canvas</li>
+          <li class="legend-path">the pointer's path</li>
+        </ul>
 
         <div class="call">
-          {/* The name keeps room for two lines, so the buttons sit in the same place for every click. */}
+          {/* This block keeps one height, so the answers sit in the same place for every click. */}
           <div class="pick">
             <p class="eyebrow">heyo would have sent this click to</p>
-            <h2 class="target" title={nameOf(picked)}>
-              {nameOf(picked)}
+            {/* A long name is set smaller, so all of it shows in two lines. */}
+            <h2 class="target" title={name} style={{ '--fit': 310 / Math.max(name.length, 1) }}>
+              {name}
             </h2>
             <p class="target-kind">
               {kindOf(picked)}
               <span class="sep"> · </span>
-              <span class="num">{picked.dist}</span> px from where you clicked
+              <span class="num">{picked.dist}</span> px away
             </p>
           </div>
 
@@ -258,21 +284,21 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
           <div class="verdicts" aria-busy={settling}>
             <button
               class={earlier === 'right' ? 'verdict right chosen' : 'verdict right'}
-              onClick={() => mark('right')}
+              onClick={answer('right')}
               onKeyDown={noRepeat}
             >
               Yes, right <kbd>Y</kbd>
             </button>
             <button
               class={earlier === 'wrong' ? 'verdict wrong chosen' : 'verdict wrong'}
-              onClick={() => mark('wrong')}
+              onClick={answer('wrong')}
               onKeyDown={noRepeat}
             >
               No, wrong <kbd>N</kbd>
             </button>
             <button
               class={earlier === 'unsure' ? 'verdict unsure chosen' : 'verdict unsure'}
-              onClick={() => mark('unsure')}
+              onClick={answer('unsure')}
               onKeyDown={noRepeat}
             >
               Not sure <kbd>U</kbd>

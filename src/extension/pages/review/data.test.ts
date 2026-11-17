@@ -4,6 +4,7 @@ import type { Decide } from '../../../core/types';
 import {
   beside,
   firesOf,
+  gapLabelSpot,
   kindOf,
   nameOf,
   percentBeside,
@@ -119,5 +120,25 @@ describe('the words for a control', () => {
     expect(plural(1, 'click')).toBe('1 click');
     expect(plural(4, 'click')).toBe('4 clicks');
     expect(plural(1234, 'review mark')).toBe('1,234 review marks');
+  });
+});
+
+describe('gapLabelSpot', () => {
+  // The picked control is to the left of the click, so the label wants to go to the right.
+  const toward = { x: -1, y: 0 };
+  const box = (x: number, y: number, w = 40, h = 20) => candidate(1, 0, { rect: { x, y, w, h } });
+
+  it('goes on the far side of the click from the picked control', () => {
+    expect(gapLabelSpot(toward, 10, 4, [])).toEqual({ x: 6, y: 0, anchor: 'start' });
+  });
+
+  it('moves to one side when a neighbour sits on the far side', () => {
+    const right = box(8, -10);
+    expect(gapLabelSpot(toward, 10, 4, [right])).toMatchObject({ x: 0, anchor: 'middle' });
+  });
+
+  it('gives no spot when neighbours sit on every side', () => {
+    const hemmed = [box(8, -10), box(-20, -30), box(-20, 8)];
+    expect(gapLabelSpot(toward, 10, 4, hemmed)).toBeNull();
   });
 });

@@ -72,7 +72,7 @@ test.describe('the review page', () => {
     await page.getByRole('button', { name: 'Numbers' }).click();
     const row = (name: string) => page.getByRole('row', { name: new RegExp(`^${name}`) });
     await expect(row('Fires you reviewed')).toContainText('2 (1 wrong)');
-    await expect(row('Fires you reviewed')).toContainText('473 with this many wrong');
+    await expect(row('Fires you reviewed')).toContainText('473 with 1 wrong');
     await expect(row('Fires you marked not sure')).toContainText('1');
 
     const log = await readLog(worker);
@@ -180,6 +180,73 @@ test.describe('the review page', () => {
     await ready(page);
   });
 
+  for (const wait of [100, 300, 450]) {
+    test(`goes back when Z is pressed ${wait} ms after a mark`, async ({
+      page,
+      worker,
+      extensionId,
+    }) => {
+      await openReviewWithFires(page, worker, extensionId);
+      const first = await page.locator('.target').innerText();
+      await page.keyboard.press('n');
+      // During the stamp, or while the next click is having its moment.
+      await page.waitForTimeout(wait);
+      await page.keyboard.press('z');
+      await expect(page.locator('.target')).toHaveText(first);
+      await expect(page.locator('.earlier')).toHaveText(/You marked this wrong/);
+      // The next key corrects that click and no other.
+      await ready(page);
+      await press(page, 'y');
+      const { reviews } = await readLog(worker);
+      expect(reviews.map((r) => r.verdict)).toEqual(['right']);
+    });
+  }
+
+  test('does not mark the next click when Space follows a mouse mark', async ({
+    page,
+    worker,
+    extensionId,
+  }) => {
+    await openReviewWithFires(page, worker, extensionId);
+    await page.getByRole('button', { name: /No, wrong/ }).click();
+    await ready(page);
+    // Space scrolls a page. It must not press the answer the mouse just used.
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(400);
+    expect((await readLog(worker)).reviews).toHaveLength(1);
+
+    // An answer reached with the keyboard keeps its focus and still works.
+    await page.getByRole('button', { name: /Yes, right/ }).focus();
+    await page.keyboard.press('Enter');
+    await ready(page);
+    expect((await readLog(worker)).reviews).toHaveLength(2);
+  });
+
+  test('picks up a click that is logged while the last mark is settling', async ({
+    page,
+    worker,
+    extensionId,
+  }) => {
+    await page.goto('/capture.html');
+    await clickAt(page, 184, 116); // beside Save
+    await page.goto(`chrome-extension://${extensionId}/review.html`);
+    await expect(page.locator('.target')).toHaveText('Save');
+
+    // Another tab logs a click the open page has not read yet.
+    const other = await page.context().newPage();
+    await other.goto('/capture.html');
+    await clickAt(other, 184, 416); // beside the card
+    await other.close();
+
+    await page.keyboard.press('y');
+    await expect(page.getByRole('heading', { name: 'All caught up' })).toBeVisible();
+    // The page reads the log again while the lockout from that mark still runs.
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect(page.locator('.target')).toHaveText('Card');
+    await press(page, 'y');
+    expect((await readLog(worker)).reviews).toHaveLength(2);
+  });
+
   test('marks one click when Enter is held on a focused answer', async ({
     page,
     worker,
@@ -246,24 +313,30 @@ test.describe('the review page', () => {
     expect((await readLog(worker)).reviews).toHaveLength(1);
   });
 
+  /** Logs the crowded click: a name of two lines and three neighbours, on a long site name. */
+  async function crowdedClick(page: Page, worker: Worker, baseURL: string) {
+    const { port } = new URL(baseURL);
+    await page.goto(`http://mail.planning-notes.heyo.test:${port}/crowd.html`);
+    await clickAt(page, 403, 216);
+    expect((await readLog(worker)).records.at(-1)!.decision.action).toBe('retarget');
+  }
+
   for (const [width, height] of [
     [1280, 633],
-    [900, 700],
+    [1000, 700],
+    [881, 700],
     [800, 600],
-    [560, 700],
+    [641, 600],
+    [640, 600],
+    [560, 600],
   ] as const) {
-    test(`keeps the drawing and the answers on screen at ${width} by ${height}`, async ({
+    test(`shows the drawing, the whole name and the answers at ${width} by ${height}`, async ({
       page,
       worker,
       extensionId,
       baseURL,
     }) => {
-      // A crowded click: a name of two lines and three neighbours, on a long site name.
-      const { port } = new URL(baseURL!);
-      await page.goto(`http://mail.planning-notes.heyo.test:${port}/crowd.html`);
-      await clickAt(page, 404, 216);
-      expect((await readLog(worker)).records[0]!.decision.action).toBe('retarget');
-
+      await crowdedClick(page, worker, baseURL!);
       await page.setViewportSize({ width, height });
       await page.goto(`chrome-extension://${extensionId}/review.html`);
       await expect(page.locator('.target')).toHaveText(/^Save the quarterly/);
@@ -271,8 +344,50 @@ test.describe('the review page', () => {
       for (const name of [/Yes, right/, /No, wrong/, /Not sure/]) {
         await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
       }
+      // The name is not cut: what is painted is all of it. Two px allow for rounding.
+      const cut = await page
+        .locator('.target')
+        .evaluate((name) => name.scrollHeight - name.clientHeight);
+      expect(cut).toBeLessThanOrEqual(2);
       // Nothing is wider than the window.
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    });
+  }
+
+  for (const [width, height] of [
+    [1280, 800],
+    [1000, 700],
+    [900, 700],
+    [600, 700],
+  ] as const) {
+    test(`keeps the answers in one place from click to click at ${width} by ${height}`, async ({
+      page,
+      worker,
+      extensionId,
+      baseURL,
+    }) => {
+      // A short name with no neighbours, and a long one with three.
+      await page.goto('/capture.html');
+      await clickAt(page, 184, 116);
+      await crowdedClick(page, worker, baseURL!);
+      await page.setViewportSize({ width, height });
+      await page.goto(`chrome-extension://${extensionId}/review.html`);
+
+      const yes = page.getByRole('button', { name: /Yes, right/ });
+      const first = {
+        name: await page.locator('.target').innerText(),
+        at: await yes.boundingBox(),
+      };
+      await press(page, 'u');
+      const second = {
+        name: await page.locator('.target').innerText(),
+        at: await yes.boundingBox(),
+      };
+      expect([first.name, second.name].sort()).toEqual([
+        'Save',
+        'Save the quarterly planning notes as a d',
+      ]);
+      expect(second.at).toEqual(first.at);
     });
   }
 

@@ -7,6 +7,7 @@ import type {
   Review,
   Verdict,
 } from '../../../core/types';
+import type { Point, Rect } from '../../../core/geometry';
 import type { Log } from '../../db';
 
 /** A click the decision would retarget, with the control it picked. */
@@ -140,4 +141,44 @@ export function beside(value: number, limit: number, digits: number): string {
  */
 export function percentBeside(value: number | null, limit: number, digits = 2): string {
   return value === null ? 'none yet' : `${beside(100 * value, 100 * limit, digits)}%`;
+}
+
+/** Where the drawing's distance label goes, relative to the click point. */
+export interface LabelSpot {
+  x: number;
+  y: number;
+  anchor: 'start' | 'middle' | 'end';
+}
+
+/**
+ * A spot for the distance label in the drawing. `toward` is the unit vector
+ * from the click to the picked control. The label goes on the far side of the
+ * click, so it never covers the gap. If a neighbour sits there it goes to one
+ * side instead, so it never covers a neighbour's name. With neighbours on every
+ * side there is no clear spot, and the distance is in the text beside the drawing.
+ */
+export function gapLabelSpot(
+  toward: Point,
+  width: number,
+  height: number,
+  others: Candidate[],
+): LabelSpot | null {
+  const spots = [
+    { x: -toward.x * 6, y: -toward.y * 7 },
+    { x: -toward.y * 9, y: toward.x * 9 },
+    { x: toward.y * 9, y: -toward.x * 9 },
+  ];
+  for (const at of spots) {
+    const anchor = at.x < -2 ? 'end' : at.x > 2 ? 'start' : 'middle';
+    const left = anchor === 'end' ? at.x - width : anchor === 'start' ? at.x : at.x - width / 2;
+    const top = at.y - height / 2;
+    const covers = (r: Rect) =>
+      left < r.x + r.w + 1 &&
+      r.x < left + width + 1 &&
+      top < r.y + r.h + 1 &&
+      r.y < top + height + 1;
+    // Adding 0 turns a negative zero into a plain one.
+    if (!others.some((c) => covers(c.rect))) return { x: at.x + 0, y: at.y + 0, anchor };
+  }
+  return null;
 }

@@ -1,8 +1,8 @@
 // A drawing of one logged click, to scale: the click point, what was near it,
 // the control heyo would pick, and how the cursor arrived.
-import { nearestPointInRect, type Rect } from '../../../core/geometry';
+import { nearestPointInRect } from '../../../core/geometry';
 import type { Candidate } from '../../../core/types';
-import { nameOf, type Fire } from './data';
+import { gapLabelSpot, nameOf, type Fire } from './data';
 
 /** Page px shown on each side of the click point. */
 const HALF = 56;
@@ -58,23 +58,8 @@ function Gap({ picked, others }: { picked: Candidate; others: Candidate[] }) {
   }
   const ux = end.x / length;
   const uy = end.y / length;
-  // The label goes on the far side of the click, away from the control, so it
-  // never covers the gap. If a neighbour sits there, it goes to one side instead,
-  // so it never covers a neighbour's name either.
   const text = `${picked.dist} px`;
-  const width = text.length * TEXT * 0.62;
-  const spots = [
-    { x: -ux * 6, y: -uy * 7 },
-    { x: -uy * 9, y: ux * 9 },
-    { x: uy * 9, y: -ux * 9 },
-  ].map((at) => {
-    const anchor = at.x < -2 ? 'end' : at.x > 2 ? 'start' : 'middle';
-    const left = anchor === 'end' ? at.x - width : anchor === 'start' ? at.x : at.x - width / 2;
-    return { ...at, anchor, box: { x: left, y: at.y - TEXT / 2, w: width, h: TEXT } };
-  });
-  const touches = (a: Rect, b: Rect) =>
-    a.x < b.x + b.w + 1 && b.x < a.x + a.w + 1 && a.y < b.y + b.h + 1 && b.y < a.y + a.h + 1;
-  const spot = spots.find((s) => !others.some((c) => touches(s.box, c.rect))) ?? spots[0]!;
+  const spot = gapLabelSpot({ x: ux, y: uy }, text.length * TEXT * 0.62, TEXT, others);
   return (
     <g>
       <line class="plate-gap" x1="0" y1="0" x2={end.x} y2={end.y} />
@@ -85,15 +70,17 @@ function Gap({ picked, others }: { picked: Candidate; others: Candidate[] }) {
         x2={end.x + uy * 2}
         y2={end.y - ux * 2}
       />
-      <text
-        class="plate-gap-text"
-        x={spot.x}
-        y={spot.y}
-        text-anchor={spot.anchor}
-        dominant-baseline="central"
-      >
-        {text}
-      </text>
+      {spot && (
+        <text
+          class="plate-gap-text"
+          x={spot.x}
+          y={spot.y}
+          text-anchor={spot.anchor}
+          dominant-baseline="central"
+        >
+          {text}
+        </text>
+      )}
     </g>
   );
 }
