@@ -1,7 +1,7 @@
 // Finds the controls and opaque regions near an empty-space click.
 import type { Rect } from '../../core/geometry';
 import { distanceToRect } from '../../core/geometry';
-import type { Candidate } from '../../core/types';
+import { SEARCH_RADIUS_PX, type Candidate } from '../../core/types';
 import { closestClickable, isDisabled, roleOf, tagOf, type HasListener } from './clickable';
 import { labelOf, type Typed } from './describe';
 import { elementAt } from './dom';
@@ -11,7 +11,7 @@ import { elementAt } from './dom';
  * a hit test, which costs more the more elements a page has, so the rings are
  * as sparse as they can be and still find any control at least 6 px across.
  */
-const RADII = [3, 6, 9, 12, 16, 20, 25, 30];
+const RADII = [3, 6, 9, 12, 16, 20, 25, SEARCH_RADIUS_PX];
 
 /** Px between neighboring sample points along a ring. */
 const SPACING = 6;

@@ -3,15 +3,13 @@
 import { distanceToRect } from '../core/geometry';
 import {
   LABEL_MAX,
+  SEARCH_RADIUS_PX,
   type Candidate,
   type ClickFeatures,
   type Decision,
   type PathSample,
   type RefuseReason,
 } from '../core/types';
-
-/** The log holds the candidates within this many px of the click. Past it the decision sees nothing. */
-const SEEN_PX = 30;
 
 /** The runner-up must be at least this many times as far as the nearest control. */
 const MARGIN = 4;
@@ -21,7 +19,7 @@ const MARGIN = 4;
  * close enough to break the margin could sit past what the log holds, so the
  * margin could not be checked.
  */
-const MAX_DIST = SEEN_PX / MARGIN;
+const MAX_DIST = SEARCH_RADIUS_PX / MARGIN;
 
 /** The runner-up must also be at least this many px farther than the nearest control. */
 const MIN_GAP = 8;

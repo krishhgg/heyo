@@ -25,7 +25,7 @@ The extension never cancels the real click. It lets the click land and replays o
 
 ## The decision
 
-The signals are distance to the candidate's nearest edge, the margin over the runner-up, and whether the last 300 ms of cursor path slowed toward it.
+The signals are distance to the candidate's nearest edge, the margin over the runner-up, and whether the cursor moved in the 300 ms before the press and did not move off the candidate.
 
 It refuses when the nearest candidate is over 7.5 px away, the runner-up is less than four times as far or less than 8 px farther, the page reacted or was changing just before the press, the press was a drag or long press, the tab lacked focus, the cursor stayed within 2 px of the click point for the 300 ms before the press or moved off the control, or the target looks irreversible, such as delete, pay or send, or has a name too long to be read whole. Twice as far and 12 px were the first guesses. On synthetic and scripted logs they let through about three times the wrong fires the 1% ceiling allows, and the wider margin and the 8 px gap are what bring it under. The log holds candidates out to 30 px, so a margin of four can only be checked for a control within 7.5 px.
 

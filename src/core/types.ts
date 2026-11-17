@@ -8,6 +8,9 @@ export type ClickSignal = 'native' | 'role' | 'tabindex' | 'cursor' | 'listener'
 /** A logged label is cut to this many characters. */
 export const LABEL_MAX = 40;
 
+/** The log holds what is within this many px of a click. Past it nothing was looked for. */
+export const SEARCH_RADIUS_PX = 30;
+
 /**
  * Something near an empty-space click.
  * A control is an element a click can activate.

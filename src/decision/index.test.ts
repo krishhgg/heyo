@@ -128,6 +128,12 @@ describe('decide', () => {
       expect(decide(features({ candidates, path: path(-2, 0) }))).toEqual(retarget(0));
     });
 
+    it('reads a path of one sample by how far that sample was', () => {
+      // A cursor that arrived just inside the 300 ms leaves a single sample.
+      expect(decide(features({ candidates, path: path(-2) }))).toEqual(retarget(0));
+      expect(decide(features({ candidates, path: path(-1.5) }))).toEqual(refuse('path'));
+    });
+
     it('does not take the jitter of a resting hand for a movement', () => {
       // A pixel back and forth covers 4 px and never leaves the click point's side.
       expect(decide(features({ candidates, path: path(0, -1, 0, -1, 0) }))).toEqual(refuse('path'));
