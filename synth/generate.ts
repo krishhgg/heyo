@@ -720,8 +720,9 @@ function planClick(rng: Random, site: Site): Plan {
  * logs made with different settings never share an id, and merging them keeps
  * every click with its own marks.
  */
-function corpusOf(options: SynthOptions): string {
-  const text = JSON.stringify(Object.entries(options).sort(([a], [b]) => (a < b ? -1 : 1)));
+function corpusOf({ seed, days, sites, clicksPerDay, start }: SynthOptions): string {
+  // Only the generator's own options. A caller may pass more, such as how many browsers to use.
+  const text = JSON.stringify([seed, days, sites, clicksPerDay, start]);
   let hash = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
   return (hash >>> 0).toString(16).padStart(8, '0');
