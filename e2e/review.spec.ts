@@ -356,6 +356,37 @@ test.describe('the review page', () => {
 
   for (const [width, height] of [
     [1280, 800],
+    [881, 700],
+    [560, 600],
+  ] as const) {
+    test(`shows a whole name of wide characters at ${width} by ${height}`, async ({
+      page,
+      worker,
+      extensionId,
+      baseURL,
+    }) => {
+      const { port } = new URL(baseURL!);
+      await page.goto(`http://127.0.0.1:${port}/crowd.html`);
+      await clickAt(page, 523, 516);
+      const [record] = (await readLog(worker)).records;
+      expect(record!.decision.action).toBe('retarget');
+      const label = record!.features.candidates[0]!.label;
+      expect(label.length).toBeGreaterThan(30);
+
+      await page.setViewportSize({ width, height });
+      await page.goto(`chrome-extension://${extensionId}/review.html`);
+      await expect(page.locator('.target')).toHaveText(label);
+      // Length alone would set this name too large. It is measured and shrunk until it fits.
+      const cut = await page
+        .locator('.target')
+        .evaluate((name) => name.scrollHeight - name.clientHeight);
+      expect(cut).toBeLessThanOrEqual(1);
+      await expect(page.getByRole('button', { name: /Not sure/ })).toBeInViewport({ ratio: 1 });
+    });
+  }
+
+  for (const [width, height] of [
+    [1280, 800],
     [1000, 700],
     [900, 700],
     [600, 700],

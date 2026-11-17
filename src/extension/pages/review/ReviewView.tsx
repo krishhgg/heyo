@@ -1,5 +1,5 @@
 // The hand review. One would-be fire at a time, marked right, wrong or not sure.
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Verdict } from '../../../core/types';
 import { kindOf, nameOf, plural, reviewKey, type Fire } from './data';
 import { Plate } from './Plate';
@@ -9,6 +9,9 @@ import { Plate } from './Plate';
  * ignored for that long, so a double tap cannot mark a click nobody has seen.
  */
 const STAMP_MS = 240;
+
+/** The smallest type a long name is set in. Below this it would not be readable. */
+const MIN_NAME_PX = 12;
 
 /**
  * How long the next click is on screen before it can be marked. A second tap
@@ -99,6 +102,27 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
   useEffect(() => {
     if (!fire && !busy.current) setAt(firstUnreviewed(fires, done));
   }, [fires, verdicts, at, settling]);
+
+  // The name's type size starts from its length, which is a guess: wide
+  // characters, as in Chinese, take twice the room. So the name is measured
+  // and shrunk until all of it shows in its two lines, again when the window changes.
+  const title = useRef<HTMLHeadingElement>(null);
+  useLayoutEffect(() => {
+    const name = title.current;
+    if (!name?.parentElement) return;
+    const fit = () => {
+      name.style.fontSize = '';
+      let size = Number.parseFloat(getComputedStyle(name).fontSize);
+      while (name.scrollHeight > name.clientHeight + 1 && size > MIN_NAME_PX) {
+        size -= 1;
+        name.style.fontSize = `${size}px`;
+      }
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(name.parentElement);
+    return () => observer.disconnect();
+  }, [at]);
 
   // In a small window the reviewer scrolls down to the buttons. The next drawing
   // has to come back into view, or it would be marked unseen.
@@ -270,7 +294,12 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
           <div class="pick">
             <p class="eyebrow">heyo would have sent this click to</p>
             {/* A long name is set smaller, so all of it shows in two lines. */}
-            <h2 class="target" title={name} style={{ '--fit': 310 / Math.max(name.length, 1) }}>
+            <h2
+              class="target"
+              ref={title}
+              title={name}
+              style={{ '--fit': 310 / Math.max(name.length, 1) }}
+            >
               {name}
             </h2>
             <p class="target-kind">
