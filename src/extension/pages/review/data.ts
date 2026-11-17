@@ -7,6 +7,7 @@ import type {
   Review,
   Verdict,
 } from '../../../core/types';
+import type { GateStatus } from '../../../core/gates';
 import type { Point, Rect } from '../../../core/geometry';
 import type { Log } from '../../db';
 
@@ -181,4 +182,13 @@ export function gapLabelSpot(
     if (!others.some((c) => covers(c.rect))) return { x: at.x + 0, y: at.y + 0, anchor };
   }
   return null;
+}
+
+/**
+ * True when a failing wrong-target gate can still be turned around. The plan
+ * asks for a sample of fires with none wrong. Before that many are marked, a
+ * bound over the limit rests on a handful of marks. After it, the fail stands.
+ */
+export function failsSoFar(status: GateStatus, reviewed: number, sample: number): boolean {
+  return status === 'fail' && reviewed < sample;
 }

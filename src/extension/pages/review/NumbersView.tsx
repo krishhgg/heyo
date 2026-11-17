@@ -10,7 +10,8 @@ import {
 import { addDays, dayOf } from '../../../core/days';
 import { missRate, type Score } from '../../../core/metrics';
 import type { Log } from '../../db';
-import { beside, percentBeside, plural } from './data';
+import { trialsNeeded } from '../../../core/stats';
+import { beside, failsSoFar, percentBeside, plural } from './data';
 
 interface Props {
   log: Log;
@@ -111,7 +112,8 @@ export function NumbersView({ log, score, onExport, onDelete }: Props) {
   const wrong = wrongTargetGate(score);
   const doubleShare = score.fires > 0 ? score.doublePress / score.fires : null;
   // With few marks the bound can sit over the limit and still come down as marks come in.
-  const wrongSoFar = wrong.status === 'fail' && wrong.reviewed < wrong.needed;
+  const sample = trialsNeeded(0, GATES.maxWrongRate);
+  const wrongSoFar = failsSoFar(wrong.status, wrong.reviewed, sample);
 
   return (
     <section class="numbers">

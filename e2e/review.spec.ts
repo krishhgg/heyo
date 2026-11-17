@@ -365,11 +365,12 @@ test.describe('the review page', () => {
       for (const name of [/Yes, right/, /No, wrong/, /Not sure/]) {
         await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
       }
-      // The name is not cut: what is painted is all of it. Two px allow for rounding.
-      const cut = await page
-        .locator('.target')
-        .evaluate((name) => name.scrollHeight - name.clientHeight);
-      expect(cut).toBeLessThanOrEqual(2);
+      // The name is not cut: no line of it is hidden.
+      const hidden = await page.locator('.target').evaluate((name) => {
+        const size = Number.parseFloat(getComputedStyle(name).fontSize);
+        return (name.scrollHeight - name.clientHeight) / size;
+      });
+      expect(hidden).toBeLessThan(0.5);
       // Nothing is wider than the window.
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     });
@@ -404,11 +405,13 @@ test.describe('the review page', () => {
         await page.setViewportSize({ width, height });
         await page.goto(`chrome-extension://${extensionId}/review.html`);
         await expect(page.locator('.target')).toHaveText(label);
-        // Length alone would set this name too large. It is measured and shrunk until it fits.
-        const cut = await page
-          .locator('.target')
-          .evaluate((name) => name.scrollHeight - name.clientHeight);
-        expect(cut).toBeLessThanOrEqual(1);
+        // Length alone would set this name too large. It is measured and shrunk until no
+        // line is hidden. Letters hang a pixel or two over their box, which is not a line.
+        const hidden = await page.locator('.target').evaluate((name) => {
+          const size = Number.parseFloat(getComputedStyle(name).fontSize);
+          return (name.scrollHeight - name.clientHeight) / size;
+        });
+        expect(hidden).toBeLessThan(0.5);
         await expect(page.getByRole('button', { name: /Not sure/ })).toBeInViewport({ ratio: 1 });
       });
     }

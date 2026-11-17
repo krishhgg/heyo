@@ -113,7 +113,10 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
     const fit = () => {
       name.style.fontSize = '';
       let size = Number.parseFloat(getComputedStyle(name).fontSize);
-      while (name.scrollHeight > name.clientHeight + 1 && size > MIN_NAME_PX) {
+      // A hidden line is at least half a line of overflow. The letters of a
+      // name that fits hang a pixel or two over their box, which is not one.
+      const cut = () => name.scrollHeight - name.clientHeight > size / 2;
+      while (cut() && size > MIN_NAME_PX) {
         size -= 1;
         name.style.fontSize = `${size}px`;
       }
@@ -121,7 +124,13 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(name.parentElement);
-    return () => observer.disconnect();
+    // The first name can be measured before the page's typeface has loaded.
+    let mounted = true;
+    void document.fonts.ready.then(() => mounted && fit());
+    return () => {
+      mounted = false;
+      observer.disconnect();
+    };
   }, [at]);
 
   // In a small window the reviewer scrolls down to the buttons. The next drawing
@@ -288,7 +297,11 @@ export function ReviewView({ active, fires, verdicts, onVerdict }: Props) {
       <div class="bench">
         <div class="plate-frame" ref={frame}>
           <Plate fire={fire} />
-          {stamp && <div class={`stamp stamp-${stamp}`}>{VERDICT_WORDS[stamp]}</div>}
+          {stamp && (
+            <div class={`stamp stamp-${stamp}`} role="status">
+              {VERDICT_WORDS[stamp]}
+            </div>
+          )}
         </div>
         <ul class="legend" aria-label="What the drawing shows">
           <li class="legend-click">your click</li>

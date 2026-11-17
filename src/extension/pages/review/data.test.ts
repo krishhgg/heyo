@@ -3,6 +3,7 @@ import { candidate, record } from '../../../core/testing';
 import type { Decide } from '../../../core/types';
 import {
   beside,
+  failsSoFar,
   firesOf,
   gapLabelSpot,
   kindOf,
@@ -140,5 +141,23 @@ describe('gapLabelSpot', () => {
   it('gives no spot when neighbours sit on every side', () => {
     const hemmed = [box(8, -10), box(-20, -30), box(-20, 8)];
     expect(gapLabelSpot(toward, 10, 4, hemmed)).toBeNull();
+  });
+});
+
+describe('failsSoFar', () => {
+  it('calls a fail on a handful of marks a fail so far', () => {
+    expect(failsSoFar('fail', 3, 299)).toBe(true);
+    expect(failsSoFar('fail', 298, 299)).toBe(true);
+  });
+
+  it('lets a fail stand once the planned sample is marked', () => {
+    // 40 wrong in 300 is not going to come down under 1%.
+    expect(failsSoFar('fail', 299, 299)).toBe(false);
+    expect(failsSoFar('fail', 300, 299)).toBe(false);
+  });
+
+  it('says nothing about a gate that is not failing', () => {
+    expect(failsSoFar('pass', 3, 299)).toBe(false);
+    expect(failsSoFar('inconclusive', 3, 299)).toBe(false);
   });
 });

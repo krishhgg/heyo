@@ -5,14 +5,14 @@ import type { Point, Rect } from './geometry';
 /** Why heyo thinks an element is clickable. */
 export type ClickSignal = 'native' | 'role' | 'tabindex' | 'cursor' | 'listener';
 
+/** A logged label is cut to this many characters. */
+export const LABEL_MAX = 40;
+
 /**
  * Something near an empty-space click.
  * A control is an element a click can activate.
  * An opaque region is a canvas, video or iframe, where heyo cannot see what the user aimed at.
  */
-/** A logged label is cut to this many characters. */
-export const LABEL_MAX = 40;
-
 export interface Candidate {
   /** Index within the record. */
   id: number;
