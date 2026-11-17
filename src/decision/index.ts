@@ -59,6 +59,8 @@ const IRREVERSIBLE = [
   'purchase',
   'order',
   'checkout',
+  'check out',
+  'check-out',
   'donate',
   'transfer',
   'withdraw',
@@ -86,7 +88,9 @@ const IRREVERSIBLE = [
   'join',
   'unmute',
   'present',
+  'presenting',
   'record',
+  'recording',
   'hang up',
   'terminate',
   'repost',
@@ -103,8 +107,12 @@ const IRREVERSIBLE = [
   'ban',
   'leave',
   'sign out',
+  'sign-out',
+  'signout',
   'log out',
+  'log off',
   'logout',
+  'logoff',
   'confirm',
   'approve',
   'reject',
@@ -138,7 +146,9 @@ function looksIrreversible(candidate: Candidate): boolean {
  * True when the click point lies inside the box the way a browser hit-tests
  * it, with the right and bottom edges outside. The box is relative to the click.
  */
-function holdsClick({ rect }: Candidate): boolean {
+function holdsClick({ kind, rect }: Candidate): boolean {
+  // A click inside a canvas, video or iframe region is the opaque check's to answer.
+  if (kind !== 'control') return false;
   return rect.x <= 0 && rect.x + rect.w > 0 && rect.y <= 0 && rect.y + rect.h > 0;
 }
 
@@ -185,7 +195,9 @@ export function decide(features: ClickFeatures): Decision {
   if (!nearest) return refuse('no-candidate');
   // A click inside a control's box that did not reach the control landed on
   // something that covers it, such as a sticky header over a list row or an
-  // open menu over a card. The user was looking at the cover.
+  // open menu over a card, where the user was looking at the cover. Or it
+  // landed in the corner of a rounded control, outside its shape. The log
+  // cannot tell the two apart, so both are refused.
   if (byDist.some(holdsClick)) return refuse('covered');
   if (nearest.dist > MAX_DIST) return refuse('too-far');
   // An opaque region competes for the click but can never be the target.

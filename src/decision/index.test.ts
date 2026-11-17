@@ -37,9 +37,17 @@ describe('decide', () => {
     // A card under an open menu, with a menu item farther off.
     const card = candidate(0, 0, { rect: { x: -40, y: -30, w: 300, h: 120 }, label: 'Open card' });
     expect(decide(features({ candidates: [card, candidate(1, 10)] }))).toEqual(refuse('covered'));
-    // A click on the pixel just past the right or bottom edge is outside, as in a browser.
-    const past = candidate(0, 0, { rect: { x: -80, y: -15, w: 80, h: 30 } });
-    expect(decide(features({ candidates: [past] }))).toEqual(retarget(0));
+    // A box is hit from its left and top edges up to, and not on, its right and
+    // bottom ones, as in a browser.
+    const corner = candidate(0, 0, { rect: { x: 0, y: 0, w: 80, h: 30 } });
+    expect(decide(features({ candidates: [corner] }))).toEqual(refuse('covered'));
+    const pastRight = candidate(0, 0, { rect: { x: -80, y: -15, w: 80, h: 30 } });
+    expect(decide(features({ candidates: [pastRight] }))).toEqual(retarget(0));
+    const pastBottom = candidate(0, 0, { rect: { x: -40, y: -30, w: 80, h: 30 } });
+    expect(decide(features({ candidates: [pastBottom] }))).toEqual(retarget(0));
+    // A click inside a canvas or an iframe region is refused as before, under its own reason.
+    const region = candidate(0, 0, { kind: 'opaque', rect: { x: -40, y: -30, w: 300, h: 120 } });
+    expect(decide(features({ candidates: [region] }))).toEqual(refuse('ambiguous'));
   });
 
   it('refuses when the runner-up is less than four times as far', () => {
@@ -118,7 +126,11 @@ describe('decide', () => {
       'Join call',
       'Unmute',
       'Record',
+      'Start recording',
       'Hang up',
+      'Check out',
+      'Sign-out',
+      'Log off',
     ]) {
       const candidates = [candidate(0, 3, { label })];
       expect(decide(features({ candidates })), label).toEqual(refuse('irreversible'));
