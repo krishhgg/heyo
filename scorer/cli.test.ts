@@ -168,6 +168,17 @@ describe('a decision under the scorer', () => {
     expect(stderr).toMatch(/invalid decision|Access to this API has been restricted/);
   });
 
+  it('cannot build code from a string', async () => {
+    const folder = await decisionDir(
+      'builds',
+      `const build = (() => 0)['constr' + 'uctor'];
+       export const decide = () => ({ action: 'refuse', reason: String(build('return 1')()) });`,
+    );
+    const { code, stderr } = await scorer('score', logFile, '--decision', folder);
+    expect(code).toBe(2);
+    expect(stderr).toMatch(/invalid decision.*Code generation from strings/s);
+  });
+
   it('cannot start processes or open network connections', async () => {
     // A real server to connect to, so a refused connection cannot be mistaken for a blocked one.
     const server = createServer((socket) => socket.end()).listen(0, '127.0.0.1');

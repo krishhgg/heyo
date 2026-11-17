@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -120,6 +120,36 @@ describe('the decision lint', () => {
     }
     // Ordinary math stays allowed.
     expect(lint(body(`const x = Math.min(1, Math.hypot(3, 4)); void x;`))).toEqual([]);
+  });
+
+  it('rejects a key worked out at run time, which could spell anything', () => {
+    for (const hidden of [
+      `(() => { const k = 'constructor'; return (() => 0)[k]('return this')(); })()`,
+      `(() => { const k: string = features.under.tag; return (features as never)[k]; })()`,
+      `(() => { const { ['constr' + 'uctor']: c } = (() => 0) as never; return c; })()`,
+      `(() => { const { constructor: c } = () => 0; return c; })()`,
+      `Reflect.get(() => 0, 'constructor')`,
+    ]) {
+      const messages = lint(body(`const x = ${hidden}; void x;`));
+      expect(messages.join(' '), hidden).toMatch(/pure function|computed key/);
+    }
+    // A number, or one of a few known words, stays allowed.
+    const fine = body(
+      `const first = features.candidates[0]; const axis: 'x' | 'y' = 'x'; void [first, features.point[axis]];`,
+    );
+    expect(lint(fine)).toEqual([]);
+  });
+
+  it('rejects a link, and an import that lands on one', () => {
+    const source = `${HEAD}import { LUCK } from './helper';\nexport function decide(features: ClickFeatures): Decision {\n if (features.candidates.length > LUCK) ${refuse}\n ${refuse}\n}\n`;
+    const dir = join(scratch, `case-${next++}`, 'decision');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'index.ts'), source);
+    writeFileSync(join(dir, 'helper.test.ts'), 'export const LUCK = Math.random() * 137.25;\n');
+    symlinkSync(join(dir, 'helper.test.ts'), join(dir, 'helper.ts'));
+    const messages = lintDecision(dir, coreDir).map((p) => p.message);
+    expect(messages.join(' ')).toMatch(/A link\./);
+    expect(messages.join(' ')).toMatch(/Import of "\.\/helper"/);
   });
 
   it('rejects an import of a test file, which is neither linted nor kept', () => {

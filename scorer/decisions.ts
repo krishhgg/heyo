@@ -69,7 +69,13 @@ export async function decideAll(workerBundle: string, all: ClickFeatures[]): Pro
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ['--permission', `--allow-fs-read=${workerBundle}`, workerBundle],
+      [
+        '--permission',
+        `--allow-fs-read=${workerBundle}`,
+        // No eval and no new Function, so a decision cannot build code the lint never saw.
+        '--disallow-code-generation-from-strings',
+        workerBundle,
+      ],
       // An empty environment. The permission system does not hide the caller's
       // variables, and a decision could hand one back as its reason.
       { stdio: ['pipe', 'pipe', 'pipe'], env: {} },

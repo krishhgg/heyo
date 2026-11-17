@@ -3,7 +3,7 @@
 // to one site, one element or one logged click. It also keeps the module a
 // small pure function.
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import ts from 'typescript';
 
 export interface Problem {
@@ -59,6 +59,12 @@ const FORBIDDEN_NAMES = new Set([
   'Buffer',
   'Deno',
   'Bun',
+  'Reflect',
+  'Proxy',
+  'Intl',
+  'WebAssembly',
+  'Atomics',
+  'SharedArrayBuffer',
 ]);
 
 /** Property names that lead from any value to code the lint cannot see. */
@@ -87,7 +93,21 @@ export function decisionFiles(dir: string): string[] {
     .sort();
 }
 
-function lintFile(file: string, name: string, source: string, problems: Problem[]): void {
+/** Links in a decision folder. A link can point at a file the lint never reads. */
+function decisionLinks(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true, recursive: true })
+    .filter((e) => e.isSymbolicLink())
+    .map((e) => join(e.parentPath, e.name))
+    .sort();
+}
+
+function lintFile(
+  file: string,
+  name: string,
+  source: string,
+  own: Set<string>,
+  problems: Problem[],
+): void {
   const tree = ts.createSourceFile(file, source, ts.ScriptTarget.ES2022, true);
   const report = (node: ts.Node, message: string) => {
     const { line } = tree.getLineAndCharacterOfPosition(node.getStart());
@@ -106,9 +126,13 @@ function lintFile(file: string, name: string, source: string, problems: Problem[
       const from = node.moduleSpecifier;
       if (from && ts.isStringLiteral(from)) {
         const path = from.text.replace(/\.ts$/, '');
-        // A test file is neither linted nor kept with the decision, so it may not be imported.
-        const own = path.startsWith('./') && !path.includes('..') && !path.endsWith('.test');
-        if (!own && !ALLOWED_IMPORTS.has(path)) {
+        // An import of its own has to land on a file that is linted and kept with
+        // the decision. A test file is neither, and a link can lead anywhere.
+        const isOwn =
+          path.startsWith('./') &&
+          !path.includes('..') &&
+          own.has(resolve(dirname(file), `${path}.ts`));
+        if (!isOwn && !ALLOWED_IMPORTS.has(path)) {
           report(
             node,
             `Import of "${from.text}". A decision may import only its own files, ../core/geometry and ../core/types.`,
@@ -169,6 +193,18 @@ function lintFile(file: string, name: string, source: string, problems: Problem[
         : null;
     if (key !== null && HIDDEN_DOORS.has(key)) {
       report(node, `Use of "${key}". A decision is a pure function of the click's features.`);
+    }
+    if (ts.isBindingElement(node)) {
+      const picked = node.propertyName ?? node.name;
+      if (
+        (ts.isIdentifier(picked) || ts.isStringLiteralLike(picked)) &&
+        HIDDEN_DOORS.has(picked.text)
+      ) {
+        report(
+          node,
+          `Use of "${picked.text}". A decision is a pure function of the click's features.`,
+        );
+      }
     }
 
     if (ts.isNumericLiteral(node)) {
@@ -282,6 +318,37 @@ function typeCheck(files: string[], dir: string, coreDir: string, problems: Prob
       message: `Type error: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')}`,
     });
   }
+  // A key worked out at run time could spell "constructor" or "random" where
+  // the checks above cannot see it. A key is allowed when its type says it is
+  // a number, or one of a known set of strings that are all harmless.
+  const checker = program.getTypeChecker();
+  const isSafeKey = (type: ts.Type): boolean => {
+    if (type.isUnion()) return type.types.every(isSafeKey);
+    if (type.flags & ts.TypeFlags.NumberLike) return true;
+    return type.isStringLiteral() && !HIDDEN_DOORS.has(type.value) && type.value !== 'random';
+  };
+  for (const file of files) {
+    const tree = program.getSourceFile(file);
+    if (!tree) continue;
+    const visit = (node: ts.Node): void => {
+      const key = ts.isElementAccessExpression(node)
+        ? node.argumentExpression
+        : ts.isComputedPropertyName(node)
+          ? node.expression
+          : null;
+      if (key && !isSafeKey(checker.getTypeAtLocation(key))) {
+        problems.push({
+          file: relative(dir, file),
+          line: tree.getLineAndCharacterOfPosition(key.getStart()).line + 1,
+          message:
+            'A computed key that is not a number or a known harmless word. It could reach code the lint cannot see.',
+        });
+      }
+      node.forEachChild(visit);
+    };
+    visit(tree);
+  }
+
   const index = program.getSourceFile(join(dir, 'index.ts'));
   const exportsDecide = index
     ? program
@@ -305,11 +372,19 @@ export function lintDecision(dir: string, coreDir: string): Problem[] {
   if (!files.includes(join(dir, 'index.ts'))) {
     return [{ file: 'index.ts', line: 1, message: 'The decision folder has no index.ts.' }];
   }
+  for (const link of decisionLinks(dir)) {
+    problems.push({
+      file: relative(dir, link),
+      line: 1,
+      message: 'A link. Every file of a decision has to be a plain file the lint can read.',
+    });
+  }
   let lines = 0;
+  const own = new Set(files);
   for (const file of files) {
     const source = readFileSync(file, 'utf8');
     lines += source.split('\n').length;
-    lintFile(file, relative(dir, file), source, problems);
+    lintFile(file, relative(dir, file), source, own, problems);
   }
   if (lines > LIMITS.maxLines) {
     problems.push({
