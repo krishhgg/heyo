@@ -89,7 +89,12 @@ interface Pending {
 
 /** True for an element that embeds another page, whose input this script never sees. */
 function isFrame(element: Element | null): boolean {
-  return element instanceof HTMLIFrameElement || element instanceof HTMLFrameElement;
+  return (
+    element instanceof HTMLIFrameElement ||
+    element instanceof HTMLFrameElement ||
+    element instanceof HTMLObjectElement ||
+    element instanceof HTMLEmbedElement
+  );
 }
 
 function round(value: number): number {

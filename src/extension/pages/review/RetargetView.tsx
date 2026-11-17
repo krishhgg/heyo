@@ -16,6 +16,9 @@ interface Props {
   request: (request: PageRequest) => Promise<void>;
 }
 
+/** A site's share of clicks that changed nothing is judged only from this many sent clicks. */
+const ENOUGH_SENT = 20;
+
 /** How many of the latest sent clicks are listed. */
 const RECENT = 12;
 
@@ -218,7 +221,7 @@ export function RetargetView({ log, score, settings, request }: Props) {
                   {n.ignored.toLocaleString()} of {n.sent.toLocaleString()} changed nothing (
                   {percent(n.ignored / n.sent)})
                 </span>
-                {n.ignored / n.sent > GATES.maxIgnoredShare && (
+                {n.sent >= ENOUGH_SENT && n.ignored / n.sent > GATES.maxIgnoredShare && (
                   <span class="status status-fail">over {100 * GATES.maxIgnoredShare}%</span>
                 )}
               </li>
