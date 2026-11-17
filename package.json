@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=26"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -15,7 +15,10 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "e2e": "playwright test",
-    "verify": "node .claude/skills/verify-heyo/scripts/verify.mjs"
+    "verify": "node .claude/skills/verify-heyo/scripts/verify.mjs",
+    "score": "node scorer/cli.mjs score",
+    "gates": "node scorer/cli.mjs gates",
+    "synth": "node scorer/cli.mjs synth"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
