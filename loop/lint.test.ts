@@ -189,4 +189,22 @@ describe('the decision lint', () => {
     );
     expect(lint(`${body('')}${'// filler\n'.repeat(450)}`).join(' ')).toMatch(/at most 400/);
   });
+
+  it('reports an empty index.ts, or one with no import or export, and does not throw', () => {
+    for (const source of ['', 'const pick = 1;\n']) {
+      expect(lint(source).join(' ')).toMatch(/must export a function named decide/);
+    }
+  });
+
+  it('rejects a module-level variable that can be assigned again', () => {
+    const counted = `${HEAD}let calls = 0;\nexport function decide(features: ClickFeatures): Decision {\n  calls += features.candidates.length;\n  ${refuse}\n}\n`;
+    expect(lint(counted).join(' ')).toMatch(/module-level let or var/);
+    expect(lint(counted.replace('let calls', 'var calls')).join(' ')).toMatch(
+      /module-level let or var/,
+    );
+    // A let inside the function is the function's own business.
+    expect(lint(body('let far = 0;\n far = Math.max(far, features.candidates.length);'))).toEqual(
+      [],
+    );
+  });
 });

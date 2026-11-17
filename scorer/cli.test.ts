@@ -218,6 +218,18 @@ describe('a decision under the scorer', () => {
     expect(Object.keys(answers)).toEqual(['refuse: unset']);
   });
 
+  it('cannot keep anything from one click to the next', async () => {
+    // It answers its first five calls one way and the rest another, whatever the click.
+    const folder = await decisionDir(
+      'counts',
+      `const seen = { calls: 0 };
+       export const decide = () => ({ action: 'refuse', reason: seen.calls++ < 5 ? 'too-far' : 'ambiguous' });`,
+    );
+    const { code, stderr } = await scorer('score', logFile, '--decision', folder);
+    expect(code).toBe(2);
+    expect(stderr).toContain('it changed when the clicks came in another order');
+  });
+
   it('cannot import the log, a Node module or a file outside its folder', async () => {
     // The bundler runs outside the locked-down process, so an import would be read there.
     const imports = [

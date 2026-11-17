@@ -98,7 +98,7 @@ happened in each.
 
 ## Rules the lint enforces
 
-- \`decide\` is a pure function of its argument. No I/O, time or randomness.
+- \`decide\` is a pure function of its argument. No I/O, time or randomness, and nothing kept from one click to the next. The scorer runs the clicks in two orders and refuses a decision whose answers differ.
 - No hostnames, selectors, URLs or paths.
 - No constants fitted to single examples. Numbers have at most 3 significant
   digits. Strings are short lower-case keywords.
@@ -137,7 +137,23 @@ export async function codePaths(root: string): Promise<string[]> {
   return paths;
 }
 
-function runAgent(
+/** True while any process of a group is alive. */
+function groupAlive(group: number): boolean {
+  try {
+    process.kill(-group, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Runs the agent command and waits until everything it started is gone. The
+ * agent gets a process group of its own, and the whole group is killed when
+ * the time is up and when the command returns. A process the agent left
+ * behind could otherwise go on editing the decision while it is being judged.
+ */
+export function runAgent(
   command: string,
   cwd: string,
   profile: string | null,
@@ -147,20 +163,40 @@ function runAgent(
     const [file, args] = profile
       ? ['/usr/bin/sandbox-exec', ['-p', profile, '/bin/sh', '-c', command]]
       : ['/bin/sh', ['-c', command]];
-    const child = spawn(file, args, { cwd, stdio: 'inherit' });
+    const child = spawn(file, args, { cwd, stdio: 'inherit', detached: true });
+    const group = child.pid;
+    const killGroup = () => {
+      try {
+        if (group !== undefined) process.kill(-group, 'SIGKILL');
+      } catch {
+        // The group is already gone.
+      }
+    };
+    // The group no longer gets the terminal's Ctrl-C, so pass a stop on.
+    const onStop = () => {
+      killGroup();
+      process.exit(130);
+    };
+    process.once('SIGINT', onStop);
+    process.once('SIGTERM', onStop);
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGKILL');
+      killGroup();
     }, timeoutMs);
-    child.on('close', (code) => {
+    const finish = async (code: number | null) => {
       clearTimeout(timer);
+      killGroup();
+      // A killed process takes a moment to go. Nothing is judged before it has.
+      for (let i = 0; group !== undefined && groupAlive(group) && i < 100; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      process.off('SIGINT', onStop);
+      process.off('SIGTERM', onStop);
       done({ code, timedOut });
-    });
-    child.on('error', () => {
-      clearTimeout(timer);
-      done({ code: 127, timedOut });
-    });
+    };
+    child.on('close', (code) => void finish(code));
+    child.on('error', () => void finish(127));
   });
 }
 
@@ -176,14 +212,18 @@ async function copyDecision(from: string, to: string): Promise<void> {
 }
 
 /**
- * Copies a decision module's source files over the ones in an existing folder.
- * Files it does not hold, such as the folder's tests, are left alone.
+ * Makes the decision in an existing folder the same as the one in `from`:
+ * copies its source files over, and removes source files it no longer has.
+ * A helper the winner dropped would otherwise stay and be shipped with it.
+ * Anything that is not a decision source, such as the folder's tests, is left alone.
  */
 export async function copyInto(from: string, to: string): Promise<void> {
   const targets = decisionFiles(from).map((file) => ({
     file,
     target: join(to, file.slice(from.length + 1)),
   }));
+  const kept = new Set(targets.map(({ target }) => target));
+  for (const old of decisionFiles(to)) if (!kept.has(old)) await rm(old);
   // Every folder first, so a copy cannot fail halfway through on a missing one.
   for (const { target } of targets) await mkdir(dirname(target), { recursive: true });
   for (const { file, target } of targets) await cp(file, target);

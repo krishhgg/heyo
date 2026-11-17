@@ -176,6 +176,17 @@ function lintFile(
       report(node, 'Dynamic import.');
     }
     if (ts.isMetaProperty(node)) report(node, 'import.meta.');
+    // A module-level variable that can be assigned again is a place to keep a count of the calls.
+    if (
+      ts.isVariableStatement(node) &&
+      node.parent === tree &&
+      !(node.declarationList.flags & ts.NodeFlags.Const)
+    ) {
+      report(
+        node,
+        'A module-level let or var. A decision keeps nothing from one click to the next.',
+      );
+    }
     if (ts.isIdentifier(node) && FORBIDDEN_NAMES.has(node.text)) {
       const parent = node.parent;
       const isMember =
@@ -382,11 +393,10 @@ function typeCheck(files: string[], dir: string, coreDir: string, problems: Prob
   }
 
   const index = program.getSourceFile(join(dir, 'index.ts'));
-  const exportsDecide = index
-    ? program
-        .getTypeChecker()
-        .getExportsOfModule(program.getTypeChecker().getSymbolAtLocation(index)!)
-        .some((symbol) => symbol.name === 'decide')
+  // A file with no import and no export is not a module, and has no symbol.
+  const module = index && checker.getSymbolAtLocation(index);
+  const exportsDecide = module
+    ? checker.getExportsOfModule(module).some((symbol) => symbol.name === 'decide')
     : false;
   if (!exportsDecide) {
     problems.push({

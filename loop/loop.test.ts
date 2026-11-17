@@ -14,6 +14,7 @@ import {
   codePaths,
   copyInto,
   isBetter,
+  runAgent,
   sandboxProfile,
   type LoopResult,
   type Standing,
@@ -95,7 +96,7 @@ describe('codePaths', () => {
 });
 
 describe('copyInto', () => {
-  it('copies a decision with a subfolder over an existing one and leaves its tests alone', async () => {
+  it('makes an existing decision the same as the new one and leaves its tests alone', async () => {
     const from = await realpath(await mkdtemp(join(tmpdir(), 'heyo-best-')));
     const to = await realpath(await mkdtemp(join(tmpdir(), 'heyo-shipped-')));
     await mkdir(join(from, 'rules'));
@@ -104,12 +105,41 @@ describe('copyInto', () => {
     await writeFile(join(to, 'index.ts'), 'old index');
     await writeFile(join(to, 'index.test.ts'), 'the tests');
 
+    // A helper the new decision no longer has, and a note that is not a source file.
+    await writeFile(join(to, 'helper.ts'), 'old helper');
+    await writeFile(join(to, 'notes.md'), 'a note');
+
     await copyInto(from, to);
     expect(await readFile(join(to, 'index.ts'), 'utf8')).toBe('new index');
     expect(await readFile(join(to, 'rules/distance.ts'), 'utf8')).toBe('new rule');
     expect(await readFile(join(to, 'index.test.ts'), 'utf8')).toBe('the tests');
+    expect(await readFile(join(to, 'notes.md'), 'utf8')).toBe('a note');
+    expect(existsSync(join(to, 'helper.ts'))).toBe(false);
     await rm(from, { recursive: true, force: true });
     await rm(to, { recursive: true, force: true });
+  });
+});
+
+describe('running the agent', () => {
+  it('stops everything the agent started when its time is up', async () => {
+    const work = await realpath(await mkdtemp(join(tmpdir(), 'heyo-agent-')));
+    // The shell starts a process of its own and waits, the way an agent command starts its tools.
+    const late = `${JSON.stringify(process.execPath)} -e "setTimeout(() => require('fs').writeFileSync('late.txt', 'x'), 1500)" & wait`;
+    const ran = await runAgent(late, work, null, 300);
+    expect(ran.timedOut).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    expect(existsSync(join(work, 'late.txt'))).toBe(false);
+    await rm(work, { recursive: true, force: true });
+  });
+
+  it('stops what the agent left running when it returns', async () => {
+    const work = await realpath(await mkdtemp(join(tmpdir(), 'heyo-agent-')));
+    const left = `${JSON.stringify(process.execPath)} -e "setTimeout(() => require('fs').writeFileSync('late.txt', 'x'), 1000)" &`;
+    const ran = await runAgent(left, work, null, 10_000);
+    expect(ran).toEqual({ code: 0, timedOut: false });
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(existsSync(join(work, 'late.txt'))).toBe(false);
+    await rm(work, { recursive: true, force: true });
   });
 });
 
