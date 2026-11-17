@@ -1,4 +1,5 @@
 // The numbers the plan steers by, computed from a log and a decision function.
+import { daysBetween } from './days';
 import { isDoublePress, isLabeledMiss } from './labels';
 import { upperBound } from './stats';
 import type { ClickRecord, DayCount, Decide, Review } from './types';
@@ -85,26 +86,34 @@ export function score(records: ClickRecord[], reviews: Review[], decide: Decide)
 }
 
 export interface MissRate {
+  /** Calendar days from the first logged day through today. */
+  elapsedDays: number;
   /** Days on which heyo saw at least one click. */
-  days: number;
+  activeDays: number;
   clicks: number;
   misses: number;
   /** misses / clicks. Null with no clicks. */
   rate: number | null;
-  /** misses / days. Null with no days. */
+  /** misses / activeDays. Null with no active days. */
   perDay: number | null;
 }
 
-/** The numbers behind the plan's first stop condition. */
-export function missRate(records: ClickRecord[], counts: DayCount[]): MissRate {
-  const days = new Set(counts.filter((c) => c.clicks > 0).map((c) => c.day)).size;
+/**
+ * The numbers behind the plan's first stop condition.
+ * `today` is the local day the numbers are read on, as YYYY-MM-DD.
+ */
+export function missRate(records: ClickRecord[], counts: DayCount[], today: string): MissRate {
+  const days = [...new Set(counts.filter((c) => c.clicks > 0).map((c) => c.day))].sort();
+  const first = days[0];
+  const last = days.at(-1);
   const clicks = counts.reduce((sum, c) => sum + c.clicks, 0);
   const misses = records.filter(isLabeledMiss).length;
   return {
-    days,
+    elapsedDays: first && last ? daysBetween(first, today > last ? today : last) + 1 : 0,
+    activeDays: days.length,
     clicks,
     misses,
     rate: clicks > 0 ? misses / clicks : null,
-    perDay: days > 0 ? misses / days : null,
+    perDay: days.length > 0 ? misses / days.length : null,
   };
 }

@@ -67,7 +67,14 @@ describe('retargetGates', () => {
 });
 
 describe('missRateGate', () => {
-  const rate = { days: 14, clicks: 10000, misses: 70, rate: 0.007, perDay: 5 };
+  const rate = {
+    elapsedDays: 14,
+    activeDays: 14,
+    clicks: 10000,
+    misses: 70,
+    rate: 0.007,
+    perDay: 5,
+  };
 
   it('passes after two weeks with enough misses', () => {
     expect(missRateGate(rate).status).toBe('pass');
@@ -79,6 +86,11 @@ describe('missRateGate', () => {
   });
 
   it('is inconclusive before two weeks', () => {
-    expect(missRateGate({ ...rate, days: 13 }).status).toBe('inconclusive');
+    expect(missRateGate({ ...rate, elapsedDays: 13 }).status).toBe('inconclusive');
+  });
+
+  it('judges two calendar weeks even when some days had no clicks', () => {
+    const idle = { ...rate, activeDays: 10, misses: 0, rate: 0, perDay: 0 };
+    expect(missRateGate(idle).status).toBe('fail');
   });
 });

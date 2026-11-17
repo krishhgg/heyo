@@ -9,7 +9,7 @@ export const GATES = {
   minMisses: 30,
   /** The verified wrong-target rate must sit under this, with 95% confidence. */
   maxWrongRate: 0.01,
-  /** Shadow mode must run this many days before the miss rate is judged. */
+  /** Shadow mode must run this many calendar days before the miss rate is judged. */
   shadowDays: 14,
   /** Stop if labeled misses are under this share of clicks. */
   minMissRate: 0.005,
@@ -76,15 +76,19 @@ export interface MissRateGate {
   status: GateStatus;
   rate: number | null;
   perDay: number | null;
-  days: number;
+  elapsedDays: number;
 }
 
-/** The go or no-go after two weeks of shadow mode. */
+/** The go or no-go after two weeks of shadow mode. Two weeks are calendar days, used or not. */
 export function missRateGate(rate: MissRate): MissRateGate {
   let status: GateStatus = 'inconclusive';
-  if (rate.days >= GATES.shadowDays && rate.rate !== null && rate.perDay !== null) {
-    const enough = rate.rate >= GATES.minMissRate && rate.perDay >= GATES.minMissesPerDay;
+  if (rate.elapsedDays >= GATES.shadowDays) {
+    const enough =
+      rate.rate !== null &&
+      rate.perDay !== null &&
+      rate.rate >= GATES.minMissRate &&
+      rate.perDay >= GATES.minMissesPerDay;
     status = enough ? 'pass' : 'fail';
   }
-  return { status, rate: rate.rate, perDay: rate.perDay, days: rate.days };
+  return { status, rate: rate.rate, perDay: rate.perDay, elapsedDays: rate.elapsedDays };
 }

@@ -95,8 +95,9 @@ describe('missRate', () => {
   it('divides labeled misses by all clicks and by active days', () => {
     const records = [record(two, hit(0, 4)), record(two, hit(0, 4)), record(two)];
     const counts = [day('2026-11-02', 300), day('2026-11-03', 100), day('2026-11-04', 0)];
-    expect(missRate(records, counts)).toEqual({
-      days: 2,
+    expect(missRate(records, counts, '2026-11-04')).toEqual({
+      elapsedDays: 3,
+      activeDays: 2,
       clicks: 400,
       misses: 2,
       rate: 0.005,
@@ -104,7 +105,20 @@ describe('missRate', () => {
     });
   });
 
+  it('counts elapsed calendar days through today, including days with no clicks', () => {
+    const counts = [day('2026-11-02', 10), day('2026-11-05', 10)];
+    expect(missRate([], counts, '2026-11-15')).toMatchObject({ elapsedDays: 14, activeDays: 2 });
+    expect(missRate([], counts, '2026-11-05')).toMatchObject({ elapsedDays: 4, activeDays: 2 });
+  });
+
   it('has no rate without clicks', () => {
-    expect(missRate([], [])).toEqual({ days: 0, clicks: 0, misses: 0, rate: null, perDay: null });
+    expect(missRate([], [], '2026-11-04')).toEqual({
+      elapsedDays: 0,
+      activeDays: 0,
+      clicks: 0,
+      misses: 0,
+      rate: null,
+      perDay: null,
+    });
   });
 });

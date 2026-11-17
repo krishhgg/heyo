@@ -25,6 +25,7 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - The wrong-target gate uses the exact one-sided Clopper-Pearson bound at 95%. It passes when the upper bound is under 1%, which takes 299 reviewed fires with none wrong and 473 with one wrong. It fails when the lower bound reaches 1%. Anything between is inconclusive.
 - The recovery gate is inconclusive below 30 labeled misses. The plan sets no minimum, and 50% of a handful of misses is noise.
 - "Misses a day" divides by days on which heyo saw at least one click, so a day away from the computer does not count against the stop condition.
+- The two weeks of shadow mode are calendar days from the first logged day, used or not. Only the "misses a day" figure divides by active days.
 - A double press is a second press within 500 ms and 5 px of the first.
 - The first decision treats labels with social actions (like, follow, vote) as irreversible along with delete, pay and send. They notify other people and cannot be taken back. The word list is English only.
 - The first decision uses the cursor path only to refuse. It refuses when the cursor started nearer the control than it ended, unless it came from elsewhere and crossed the control, which is an overshoot.
