@@ -168,6 +168,17 @@ describe('a decision under the scorer', () => {
     expect(stderr).toMatch(/invalid decision|Access to this API has been restricted/);
   });
 
+  it('cannot build code from a string', async () => {
+    const folder = await decisionDir(
+      'builds',
+      `const build = (() => 0)['constr' + 'uctor'];
+       export const decide = () => ({ action: 'refuse', reason: String(build('return 1')()) });`,
+    );
+    const { code, stderr } = await scorer('score', logFile, '--decision', folder);
+    expect(code).toBe(2);
+    expect(stderr).toMatch(/invalid decision.*Code generation from strings/s);
+  });
+
   it('cannot start processes or open network connections', async () => {
     // A real server to connect to, so a refused connection cannot be mistaken for a blocked one.
     const server = createServer((socket) => socket.end()).listen(0, '127.0.0.1');
@@ -205,6 +216,18 @@ describe('a decision under the scorer', () => {
     expect(stdout).not.toContain('a-secret');
     const { answers } = JSON.parse(stdout) as { answers: Record<string, number> };
     expect(Object.keys(answers)).toEqual(['refuse: unset']);
+  });
+
+  it('cannot keep anything from one click to the next', async () => {
+    // It answers its first five calls one way and the rest another, whatever the click.
+    const folder = await decisionDir(
+      'counts',
+      `const seen = { calls: 0 };
+       export const decide = () => ({ action: 'refuse', reason: seen.calls++ < 5 ? 'too-far' : 'ambiguous' });`,
+    );
+    const { code, stderr } = await scorer('score', logFile, '--decision', folder);
+    expect(code).toBe(2);
+    expect(stderr).toContain('it changed when the clicks came in another order');
   });
 
   it('cannot import the log, a Node module or a file outside its folder', async () => {

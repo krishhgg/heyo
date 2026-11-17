@@ -5,7 +5,16 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist/', 'node_modules/', 'playwright-report/', 'test-results/', '.verify/', 'mac/'],
+    ignores: [
+      'dist/',
+      'node_modules/',
+      'playwright-report/',
+      'test-results/',
+      '.verify/',
+      'mac/',
+      // A decision fixture. Its "../core" import resolves only through the scorer and the lint.
+      'loop/fixtures/',
+    ],
   },
   js.configs.recommended,
   {

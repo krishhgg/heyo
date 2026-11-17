@@ -28,6 +28,14 @@ npm run gates -- synth.json
 
 [docs/scoring.md](docs/scoring.md) explains the report, the held-out split and what a decision can see.
 
+## Improve the decision with an agent
+
+```bash
+npm run loop -- --log heyo-log.json --agent "<command that starts a coding agent>"
+```
+
+[docs/agent-loop.md](docs/agent-loop.md) explains what the agent gets and what keeps the result honest.
+
 ## Mac app
 
 `mac/` holds the feasibility experiment for a macOS version. It has not been run yet, because it needs Accessibility permission. [docs/mac-feasibility.md](docs/mac-feasibility.md) says how to run it and how to read the result.

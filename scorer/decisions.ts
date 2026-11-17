@@ -61,15 +61,42 @@ function assertNetworkLocked(): Promise<void> {
 
 /**
  * Runs the bundled worker over every click's features and returns one decision
- * per click, in order. The child process gets Node's permission system with
- * read access to its own bundle and nothing else, and an empty environment.
+ * per click, in order. The clicks are run twice, each time in a new process,
+ * the second time in reverse order. A decision that answers the same click
+ * differently is keeping something from one click to the next, and is refused.
  */
 export async function decideAll(workerBundle: string, all: ClickFeatures[]): Promise<Decision[]> {
   await assertNetworkLocked();
+  const [forward, backward] = await Promise.all([
+    runWorker(workerBundle, all),
+    runWorker(workerBundle, [...all].reverse()),
+  ]);
+  backward.reverse();
+  const moved = forward.findIndex((d, i) => JSON.stringify(d) !== JSON.stringify(backward[i]));
+  if (moved >= 0) {
+    throw new Error(
+      `Click ${moved} got an invalid decision: it changed when the clicks came in another order. A decision must depend on one click alone.`,
+    );
+  }
+  return forward;
+}
+
+/**
+ * One run of the bundled worker over every click's features, with one decision
+ * per click, in order. The child process gets Node's permission system with
+ * read access to its own bundle and nothing else, and an empty environment.
+ */
+function runWorker(workerBundle: string, all: ClickFeatures[]): Promise<Decision[]> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ['--permission', `--allow-fs-read=${workerBundle}`, workerBundle],
+      [
+        '--permission',
+        `--allow-fs-read=${workerBundle}`,
+        // No eval and no new Function, so a decision cannot build code the lint never saw.
+        '--disallow-code-generation-from-strings',
+        workerBundle,
+      ],
       // An empty environment. The permission system does not hide the caller's
       // variables, and a decision could hand one back as its reason.
       { stdio: ['pipe', 'pipe', 'pipe'], env: {} },

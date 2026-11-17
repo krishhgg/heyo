@@ -11,14 +11,16 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . && prettier --check . && tsc --noEmit",
+    "lint": "eslint . && prettier --check . && tsc --noEmit && node loop/cli.mjs lint src/decision",
     "format": "prettier --write .",
     "test": "vitest run",
     "e2e": "playwright test",
     "verify": "node .claude/skills/verify-heyo/scripts/verify.mjs",
     "score": "node scorer/cli.mjs score",
     "gates": "node scorer/cli.mjs gates",
-    "synth": "node scorer/cli.mjs synth"
+    "synth": "node scorer/cli.mjs synth",
+    "loop": "node loop/cli.mjs run",
+    "lint:decision": "node loop/cli.mjs lint src/decision"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

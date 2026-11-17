@@ -145,3 +145,26 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - The synthetic generator's behavioral numbers are guesses and live in one `ASSUMPTIONS` object. The share of deliberate clicks that land beside a control is 0.5%. The synthetic wrong-target rate follows almost directly from it.
 - Synthetic review marks cover every candidate of every record, so any decision can be scored without new reviews.
 - In the synthetic layouts many rows of controls touch with no gap, and a lone control is the most common scene. Real toolbars and lists mostly have touching hit boxes, so a miss between two neighbors is rarer than a miss off the end of a row.
+
+## Agent loop
+
+- The agent command is any shell command, run once per round in the workspace. The loop does not depend on one agent product.
+- The agent runs under macOS `sandbox-exec` with a profile that denies reads of the log files and the runner's folder, and denies writes to the repo. The plan asks for a scorer and labels that are read-only and outside the workspace, and a test split the agent never reads. The sandbox enforces both.
+- The agent gets the train split and its review marks. Acceptance is judged on the same split. The held-out split is judged once, after the last round, and the agent is never told the result, so it cannot tune against it round by round.
+- "Better" puts the ceiling first, as the plan makes it a pass or fail gate. Above the ceiling a lower upper bound on the wrong-target rate is better. Under it, higher recovery is better.
+- A change that is not better is undone, so every round starts from the best decision so far.
+- The sandbox makes read-only every place the runner runs code from, by real path: the repo, its packages, which a link can put outside the repo, and Node's own folder. The runner's bundle cache, where worker code is written and then run, is closed to the agent entirely.
+- The lint allows `Math` only written as `Math.<name>`, with a name from a fixed list of arithmetic members, and never `constructor`, `prototype` or `__proto__`. Each is a way to reach `Math.random` or build new code without the lint seeing it. A key worked out at run time is allowed only when its type is a number or a known set of harmless words. An import of the decision's own has to land on a plain file the lint reads, so a test file or a link is refused.
+- The scorer runs the decision with Node's code generation from strings turned off. The lint is a list of known ways around purity, and a list has gaps. With `eval` and `new Function` gone at run time, a gap in the list cannot be used to build code.
+- The scorer runs every decision over the clicks in two orders and refuses one whose answers differ. The lint also bans a module-level `let` or `var`, which gives the agent the reason early, but a lint cannot follow every way to keep state, and the two runs can.
+- The agent runs in its own process group, and the group is killed when a round's time is up and when the command returns. A tool the agent left running could otherwise edit the decision between the lint and the scoring.
+- `--apply` makes `src/decision` the same as the winner: source files the winner dropped are removed, and tests are left alone.
+- After each round the runner checks that the workspace and its own folder are still the folders they were: not moved, not replaced, and reached through no link. If not, the run stops with an error and writes nothing more. An agent that put a link to the repo in place of its workspace would otherwise have the runner delete and rewrite files there.
+- The runner never writes through what an agent left in the workspace. Each file of the runner's is removed and made again, so a link under its name leads nowhere. The history is kept by the runner and the agent gets a new copy each round.
+- The sandbox closes every folder whose name ends in `.private`, not only this run's, and closes the log files to writes as well as reads. The train file carries no day counts.
+- The lint allows a decision a short list of globals and refuses every other name it did not declare, where it used to refuse a list of known bad ones. `Error` was not on that list, and an error's stack names `file://` under the scorer and another scheme in the extension, so a rule could tell the two apart. `try` and the members that answer by the machine's language settings are refused for the same reason.
+- Each round the agent's edit is copied into the runner's folder before it is linted, scored or kept. macOS gives no way to hold every descendant of the agent, so the runner makes sure a process that got away cannot touch what is judged.
+- The starting decision is set aside before the workspace is filled, so a run can start from the best of an earlier run in the same workspace.
+- The lint is an AST check, not a text search. It limits numbers to 3 significant digits, strings to short lower-case keywords, and bans hostnames, selectors, URLs, paths, I/O, time and randomness. It also type-checks the decision against the repo's core, so reading a field the features do not hold is an error.
+- CI runs the lint on `src/decision`, so a hand edit is held to the same rules as the agent.
+- `--apply` copies the best decision into `src/decision` only when both held-out gates pass. A person still reads the diff before it ships.
