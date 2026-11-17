@@ -26,7 +26,7 @@ The command prints each check as it goes, writes `report.md` and `report.json` i
 
 The plan names three reasons to drop the Mac app: processing that adds over 30 ms on top of the press, held presses that break drags, and probing that lags Electron apps. The experiment tests each.
 
-**Accessibility hit tests.** For every running app with a window, it times `AXUIElementCopyElementAtPosition` at 60 random points in the frontmost window, with the plan's 30 ms messaging timeout. At every third point it times the full ring search the Mac app would do, 137 hit tests. It reports the median, the 95th percentile, the slowest call and the number of timeouts for each app, and marks Electron apps. Open Safari, Chrome and an Electron app such as Cursor first, so they are measured.
+**Accessibility hit tests.** For every running app with a window, it times `AXUIElementCopyElementAtPosition` at 60 random points in the frontmost window, with the plan's 30 ms messaging timeout. It asks each app directly, so a window of another app lying on top cannot answer in its place. At every third point it times the full ring search the Mac app would do, 137 hit tests. It reports how many hit tests were answered, timed out or failed, the median, the 95th percentile and the slowest answered call, and marks Electron apps. A ring search counts only when at least 80% of its hit tests got an answer. An app with no ring search that counts is reported as not measured, which is not a pass. Open Safari, Chrome and an Electron app such as Cursor first, so they are measured.
 
 **The event tap.** It opens its own window with one button and a title bar, turns on an active tap, and posts real mouse events:
 
@@ -41,7 +41,7 @@ It also times the tap callback itself.
 
 ## Reading the result
 
-- Go: the ring search stays under 30 ms at the 95th percentile in every app, rewriting or re-posting delivers exactly one click, and both drag checks pass. The Mac app's shadow mode is the next step.
+- Go: every app was measured and its ring search stays under 30 ms at the 95th percentile, the tap was created, the two setup checks passed, and either rewriting delivers exactly one click, or re-posting does and both drag checks pass. The Mac app's shadow mode is the next step. Anything that did not run or gave no answer makes it no-go.
 - Rewriting works: build on it. There is no delay and nothing to buffer, so the drag cases stop mattering.
 - Only re-posting works: the Mac app has to hold presses, and the two drag checks decide whether that is safe.
 - The ring search is slow only in Electron apps: ship with those apps excluded, or with fewer sample points for them.

@@ -49,11 +49,20 @@ final class TapState {
 
 let tapState = TapState()
 
-func post(_ type: CGEventType, at point: CGPoint, marked: Bool) {
+/// Posts a mouse event as if it came from the hardware. The driver uses this to act as the user.
+func post(_ type: CGEventType, at point: CGPoint) {
+    CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: .left)?
+        .post(tap: .cghidEventTap)
+}
+
+/// Posts a mouse event from inside the tap callback. An event posted through
+/// the callback's proxy is delivered ahead of the event the callback is about
+/// to return, which a post at the hardware entry point does not promise.
+func inject(_ type: CGEventType, at point: CGPoint, through proxy: CGEventTapProxy) {
     guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: .left)
     else { return }
-    if marked { event.setIntegerValueField(.eventSourceUserData, value: ownEventMarker) }
-    event.post(tap: .cghidEventTap)
+    event.setIntegerValueField(.eventSourceUserData, value: ownEventMarker)
+    event.tapPostEvent(proxy)
 }
 
 func tapCallback(
@@ -77,13 +86,13 @@ func tapCallback(
         case (.repost, .leftMouseDragged):
             switch tapState.buffer.handle(.dragged(to: at)) {
             case .drop: result = nil
-            case let .releaseHeldPressThenPass(origin): post(.leftMouseDown, at: origin, marked: true)
+            case let .releaseHeldPressThenPass(origin): inject(.leftMouseDown, at: origin, through: proxy)
             default: break
             }
         case (.repost, .leftMouseUp):
             if case let .clickAt(target) = tapState.buffer.handle(.up(at: at)) {
-                post(.leftMouseDown, at: target, marked: true)
-                post(.leftMouseUp, at: target, marked: true)
+                inject(.leftMouseDown, at: target, through: proxy)
+                inject(.leftMouseUp, at: target, through: proxy)
                 result = nil
             }
         default:
@@ -167,36 +176,39 @@ func runTapExperiment() -> TapReport {
         tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
         eventsOfInterest: mask, callback: tapCallback, userInfo: nil)
     else {
-        say("The active event tap could not be created.")
-        return TapReport(tests: [TapTest(name: "create tap", pass: false, detail: "tapCreate returned nil")],
-                         callbackP95: 0, callbackMax: 0)
+        say("FAIL \(Verdict.Check.tapCreated.rawValue): tapCreate returned nil")
+        probe.window.close()
+        return TapReport(
+            tests: [TapTest(name: Verdict.Check.tapCreated.rawValue, pass: false, detail: "tapCreate returned nil")],
+            callbackP95: 0, callbackMax: 0)
     }
     CFRunLoopAddSource(CFRunLoopGetMain(), CFMachPortCreateRunLoopSource(nil, tap, 0), .commonModes)
     CGEvent.tapEnable(tap: tap, enable: true)
 
     var tests: [TapTest] = []
-    func record(_ name: String, _ pass: Bool, _ detail: String) {
-        say("\(pass ? "PASS" : "FAIL") \(name): \(detail)")
-        tests.append(TapTest(name: name, pass: pass, detail: detail))
+    func record(_ check: Verdict.Check, _ pass: Bool, _ detail: String) {
+        say("\(pass ? "PASS" : "FAIL") \(check.rawValue): \(detail)")
+        tests.append(TapTest(name: check.rawValue, pass: pass, detail: detail))
     }
+    record(.tapCreated, true, "an active tap for left mouse events is running")
     func click(at point: CGPoint) {
-        post(.mouseMoved, at: point, marked: false)
+        post(.mouseMoved, at: point)
         pause(60)
-        post(.leftMouseDown, at: point, marked: false)
+        post(.leftMouseDown, at: point)
         pause(70)
-        post(.leftMouseUp, at: point, marked: false)
+        post(.leftMouseUp, at: point)
         pause(250)
     }
     func drag(from start: CGPoint, by dx: CGFloat) {
-        post(.mouseMoved, at: start, marked: false)
+        post(.mouseMoved, at: start)
         pause(60)
-        post(.leftMouseDown, at: start, marked: false)
+        post(.leftMouseDown, at: start)
         pause(60)
         for step in 1...8 {
-            post(.leftMouseDragged, at: CGPoint(x: start.x + dx * CGFloat(step) / 8, y: start.y), marked: false)
+            post(.leftMouseDragged, at: CGPoint(x: start.x + dx * CGFloat(step) / 8, y: start.y))
             pause(25)
         }
-        post(.leftMouseUp, at: CGPoint(x: start.x + dx, y: start.y), marked: false)
+        post(.leftMouseUp, at: CGPoint(x: start.x + dx, y: start.y))
         pause(300)
     }
     func reset(_ mode: TapMode, zone: CGRect, target: CGPoint) {
@@ -221,30 +233,30 @@ func runTapExperiment() -> TapReport {
 
         reset(.off, zone: .null, target: .zero)
         click(at: middle)
-        record("posted clicks reach the window", onMain { probe.presses } == 1,
+        record(.clicksArrive, onMain { probe.presses } == 1,
                "a click on the button with the tap off pressed it \(onMain { probe.presses }) time(s)")
 
         click(at: miss)
-        record("a near miss does nothing without heyo", onMain { probe.presses } == 1,
+        record(.missDoesNothing, onMain { probe.presses } == 1,
                "a click 4 pt beside the button pressed it \(onMain { probe.presses } - 1) more time(s)")
 
         reset(.rewrite, zone: zone, target: middle)
         click(at: miss)
         let cursor = CGEvent(source: nil)?.location ?? .zero
-        record("rewriting the press's location",
+        record(.rewrite,
                onMain { probe.presses } == 1,
                "pressed \(onMain { probe.presses }) time(s). The pointer ended at x \(Int(cursor.x)), and the miss was at x \(Int(miss.x)).")
 
         reset(.repost, zone: zone, target: middle)
         click(at: miss)
-        record("holding the press and posting it at the target on release",
+        record(.repost,
                onMain { probe.presses } == 1, "pressed \(onMain { probe.presses }) time(s)")
 
         reset(.repost, zone: zone, target: middle)
         drag(from: miss, by: 60)
         let log = onMain { probe.view.log }
         let dragged = log.first?.hasPrefix("down") == true && log.contains("dragged") && log.last?.hasPrefix("up") == true
-        record("a held press that becomes a drag",
+        record(.heldDrag,
                dragged && onMain { probe.presses } == 0,
                "the view got: \(log.prefix(3).joined(separator: ", ")) ... \(log.last ?? "nothing"). The button was pressed \(onMain { probe.presses }) time(s).")
 
@@ -256,7 +268,7 @@ func runTapExperiment() -> TapReport {
         reset(.repost, zone: closeZone, target: CGPoint(x: close.midX, y: close.midY))
         drag(from: beside, by: 80)
         let moved = onMain { probe.window.frame.origin.x } - before
-        record("a title-bar drag that starts beside the close button",
+        record(.titleBarDrag,
                abs(moved - 80) < 6 && !onMain { probe.closed },
                "the window moved \(Int(moved)) pt of 80 and is \(onMain { probe.closed } ? "closed" : "still open")")
 

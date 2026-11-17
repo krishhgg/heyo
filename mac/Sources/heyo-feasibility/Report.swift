@@ -1,41 +1,30 @@
 // The experiment's result, as JSON for tools and Markdown for people.
 import Foundation
+import HeyoKit
 
 struct Report: Codable {
     var latency: [AppLatency]?
     var tap: TapReport?
 
-    /// The plan drops the Mac app if processing adds over 30 ms, if held presses
-    /// break drags, or if probing lags Electron apps.
-    var problems: [String] {
-        var found: [String] = []
-        for app in latency ?? [] where app.ringP95 > budgetMs {
-            found.append("The ring search in \(app.app) took \(String(format: "%.0f", app.ringP95)) ms at the 95th percentile, over the 30 ms limit\(app.isElectron ? ". It is an Electron app" : "").")
+    /// The go or no-go, by the plan's stop conditions. A part that did not run is never a pass.
+    var verdict: Verdict {
+        let passed = tap.map { report in
+            Set(report.tests.filter(\.pass).compactMap { Verdict.Check(rawValue: $0.name) })
         }
-        if let tap {
-            let failed = Set(tap.tests.filter { !$0.pass }.map(\.name))
-            let rewrite = "rewriting the press's location"
-            let repost = "holding the press and posting it at the target on release"
-            if failed.contains(rewrite) && failed.contains(repost) {
-                found.append("Neither rewriting nor re-posting a press delivered the click.")
-            }
-            for name in ["a held press that becomes a drag", "a title-bar drag that starts beside the close button"]
-            where failed.contains(name) {
-                found.append("Failed: \(name).")
-            }
-            if tap.callbackP95 > budgetMs {
-                found.append("The tap callback took \(String(format: "%.1f", tap.callbackP95)) ms at the 95th percentile.")
-            }
-        }
-        return found
+        let ran = Set((tap?.tests ?? []).compactMap { Verdict.Check(rawValue: $0.name) })
+        return Verdict(
+            apps: latency?.map { Verdict.App(name: $0.app, isElectron: $0.isElectron, ringP95: $0.ringP95) },
+            passed: passed, ran: ran, callbackP95: tap?.callbackP95 ?? 0, budgetMs: budgetMs)
     }
 
-    var verdictIsGo: Bool { latency != nil && tap != nil && problems.isEmpty }
+    var problems: [String] { verdict.problems }
+    var verdictIsGo: Bool { verdict.isGo }
 
     var markdown: String {
         var lines = ["# Mac feasibility result", ""]
         if latency == nil || tap == nil {
-            lines.append("Only part of the experiment ran. Run `heyo-feasibility all` for a verdict.")
+            lines.append("Only part of the experiment ran, so there is no verdict. Run `heyo-feasibility all`.")
+            lines.append(contentsOf: problems.map { "- \($0)" })
         } else if problems.isEmpty {
             lines.append("Go. Every check stayed inside the plan's limits.")
         } else {
@@ -44,13 +33,14 @@ struct Report: Codable {
         }
         if let latency {
             lines += ["", "## Accessibility hit tests", "",
-                      "| App | Electron | Hit test p50 | p95 | max | Timeouts | Ring search p95 |",
-                      "| --- | --- | --- | --- | --- | --- | --- |"]
+                      "| App | Electron | Answered | Timed out | Failed | Hit test p50 | p95 | max | Ring search p95 |",
+                      "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
             for app in latency {
                 lines.append(String(
-                    format: "| %@ | %@ | %.2f ms | %.2f ms | %.1f ms | %d of %d | %.1f ms |",
-                    app.app, app.isElectron ? "yes" : "no", app.hitTestP50, app.hitTestP95, app.hitTestMax,
-                    app.timeouts, app.samples, app.ringP95))
+                    format: "| %@ | %@ | %d | %d | %d | %.2f ms | %.2f ms | %.1f ms | %@ |",
+                    app.app, app.isElectron ? "yes" : "no", app.answered, app.timeouts, app.errors,
+                    app.hitTestP50, app.hitTestP95, app.hitTestMax,
+                    app.ringP95.map { String(format: "%.1f ms", $0) } ?? "not measured"))
             }
         }
         if let tap {

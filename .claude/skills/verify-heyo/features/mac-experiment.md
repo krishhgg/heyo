@@ -8,7 +8,7 @@
 - `latency` times Accessibility hit tests and the ring search against every running app with a window.
 - `tap` tries rewriting a press, re-posting it at the target, and turning a held press back into a drag.
 - `report` writes `report.md` and `report.json` and exits 0 for go, 1 for no-go.
-- `logic` is the permission-free part: the ring of sample points and the press buffer.
+- `logic` is the permission-free part: the ring of sample points, the press buffer and the go or no-go verdict.
 
 ## How to get to it (user POV)
 
@@ -21,7 +21,7 @@ Preconditions:
 
 - The Swift toolchain is installed (`swift --version`). `verify.mjs` is not used. This feature has no browser part.
 
-- **Logic.** Run `swift test` in `mac/`. It ends with `Test run with 8 tests in 3 suites passed`.
+- **Logic.** Run `swift test` in `mac/`. It ends with `Test run with 17 tests in 4 suites passed`.
 - **Permission check.** Run `swift run -c release heyo-feasibility check` in `mac/`. It prints `Accessibility permission: yes` or `no`. With `no` it prints the steps to grant it and `Nothing was measured.`
 - **The experiment.** With the permission, run `swift run -c release heyo-feasibility all --out /tmp/heyo-mac`. Each tap check prints a `PASS` or `FAIL` line, and each app prints its hit-test times. `report.md` in the folder holds the verdict.
 - **Proof.** Keep `report.md` and `report.json`. Without the permission the proof is the output of `check`, and the experiment is unverified.

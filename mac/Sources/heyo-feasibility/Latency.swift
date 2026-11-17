@@ -15,17 +15,24 @@ struct AppLatency: Codable {
     var app: String
     var bundle: String
     var isElectron: Bool
-    /// One hit test at one point, in ms.
+    /// One hit test at one point, in ms. Only answered hit tests are timed.
     var hitTestP50: Double
     var hitTestP95: Double
     var hitTestMax: Double
     /// Hit tests that hit the 30 ms messaging timeout.
     var timeouts: Int
-    var samples: Int
+    /// Hit tests that failed for another reason, such as an app that does not support them.
+    var errors: Int
+    /// Hit tests that got an answer.
+    var answered: Int
     /// The whole ring search around one point, 137 hit tests, in ms.
-    var ringP50: Double
-    var ringP95: Double
+    /// Nil when too few of the ring's hit tests got an answer for the time to mean anything.
+    var ringP50: Double?
+    var ringP95: Double?
 }
+
+/// A ring search counts only when at least this share of its hit tests got an answer.
+let minAnsweredShare = 0.8
 
 func milliseconds(_ body: () -> Void) -> Double {
     let start = DispatchTime.now().uptimeNanoseconds
@@ -53,55 +60,79 @@ func frontWindowFrame(of app: NSRunningApplication) -> CGRect? {
     return CGRect(origin: origin, size: extent)
 }
 
-/// One hit test with the plan's 30 ms timeout. Returns the time taken and whether it timed out.
-func hitTest(_ system: AXUIElement, at point: CGPoint) -> (ms: Double, timedOut: Bool) {
+enum HitResult {
+    case answered
+    case timedOut
+    case failed
+}
+
+/// One hit test with the plan's 30 ms timeout, asked of one app, so a window
+/// of another app lying on top cannot answer in its place. No element at the
+/// point is still an answer.
+func hitTest(_ app: AXUIElement, at point: CGPoint) -> (ms: Double, result: HitResult) {
     var element: AXUIElement?
-    var result = AXError.success
+    var error = AXError.success
     let ms = milliseconds {
-        result = AXUIElementCopyElementAtPosition(system, Float(point.x), Float(point.y), &element)
+        error = AXUIElementCopyElementAtPosition(app, Float(point.x), Float(point.y), &element)
     }
-    return (ms, result == .cannotComplete)
+    switch error {
+    case .success, .noValue: return (ms, .answered)
+    case .cannotComplete: return (ms, .timedOut)
+    default: return (ms, .failed)
+    }
 }
 
 func measureLatency() -> [AppLatency] {
-    let system = AXUIElementCreateSystemWide()
-    AXUIElementSetMessagingTimeout(system, Float(budgetMs / 1000))
     let offsets = ringOffsets()
     var results: [AppLatency] = []
 
     let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
     for app in apps {
         guard let frame = frontWindowFrame(of: app), frame.width > 100, frame.height > 100 else { continue }
+        let element = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(element, Float(budgetMs / 1000))
         let bundlePath = app.bundleURL?.path ?? ""
         let electron = FileManager.default.fileExists(
             atPath: bundlePath + "/Contents/Frameworks/Electron Framework.framework")
         var single: [Double] = []
         var rings: [Double] = []
         var timeouts = 0
+        var errors = 0
         var generator = SystemRandomNumberGenerator()
         for sample in 0..<60 {
             let point = CGPoint(
                 x: CGFloat.random(in: frame.minX + 10...frame.maxX - 10, using: &generator),
                 y: CGFloat.random(in: frame.minY + 10...frame.maxY - 10, using: &generator))
-            let one = hitTest(system, at: point)
-            single.append(one.ms)
-            if one.timedOut { timeouts += 1 }
+            let one = hitTest(element, at: point)
+            switch one.result {
+            case .answered: single.append(one.ms)
+            case .timedOut: timeouts += 1
+            case .failed: errors += 1
+            }
             // The full ring search on every third point.
             guard sample % 3 == 0 else { continue }
-            rings.append(milliseconds {
+            var answered = 0
+            let ms = milliseconds {
                 for offset in offsets {
-                    _ = hitTest(system, at: CGPoint(x: point.x + offset.dx, y: point.y + offset.dy))
+                    let hit = hitTest(element, at: CGPoint(x: point.x + offset.dx, y: point.y + offset.dy))
+                    if hit.result == .answered { answered += 1 }
                 }
-            })
+            }
+            // A ring that mostly failed or timed out says nothing about how long a working one takes.
+            if Double(answered) >= minAnsweredShare * Double(offsets.count) { rings.append(ms) }
         }
-        guard let one = Timing(single), let ring = Timing(rings) else { continue }
         let name = app.localizedName ?? "unknown"
-        say(String(format: "%@: hit test p50 %.2f ms, p95 %.2f ms, max %.1f ms, %d timeouts. Ring search p95 %.1f ms.",
-                   name, one.p50, one.p95, one.max, timeouts, ring.p95))
+        let one = Timing(single)
+        let ring = Timing(rings)
+        say(String(format: "%@: %d of 60 hit tests answered, %d timed out, %d failed. Hit test p95 %@. Ring search p95 %@.",
+                   name, single.count, timeouts, errors,
+                   one.map { String(format: "%.2f ms", $0.p95) } ?? "not measured",
+                   ring.map { String(format: "%.1f ms", $0.p95) } ?? "not measured"))
         results.append(AppLatency(
             app: name, bundle: app.bundleIdentifier ?? "", isElectron: electron,
-            hitTestP50: one.p50, hitTestP95: one.p95, hitTestMax: one.max, timeouts: timeouts,
-            samples: one.count, ringP50: ring.p50, ringP95: ring.p95))
+            hitTestP50: one?.p50 ?? 0, hitTestP95: one?.p95 ?? 0, hitTestMax: one?.max ?? 0,
+            timeouts: timeouts, errors: errors, answered: single.count,
+            ringP50: ring?.p50, ringP95: ring?.p95))
     }
     if results.isEmpty { say("No app with a window was found to measure.") }
     return results
