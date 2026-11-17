@@ -146,9 +146,11 @@ test.describe('a near miss with retargeting on', () => {
     expect(fire?.outcome).toBe('sent');
   });
 
-  test('opens or declines a native dropdown without breaking', async ({ page, worker }) => {
+  test('opens a native dropdown', async ({ page, worker }) => {
+    // A select ignores a synthetic click, so heyo asks Chrome to show its picker.
     const { fire } = await nearMiss(page, worker, 384, 316);
-    expect(['sent', 'failed']).toContain(fire?.outcome);
+    expect(fire).toEqual(sent);
+    await expect(page.locator('#select')).toBeFocused();
   });
 
   test('leaves a control alone when its label looks irreversible', async ({ page, worker }) => {
@@ -211,6 +213,28 @@ test.describe('a near miss with retargeting on', () => {
       });
     expect(await badge()).toEqual(['→', '']);
     await expect.poll(badge).toEqual(['', '']);
+  });
+});
+
+test.describe('a double-click beside a control', () => {
+  test('sends the first click on and never the second', async ({ page, worker }) => {
+    await turnOnRetargeting(worker);
+    // Where text cannot be selected, the second press changes nothing on the
+    // page, so it too looks like a click the page ignored.
+    await page.goto('/replay.html?noselect');
+    await clickAt(page, 184, 116);
+    // A hand moves a little between the two presses. The second one is within 5 px of the first.
+    await page.mouse.move(187, 116);
+    await page.mouse.move(184, 116);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(SENT_MS);
+
+    expect(await actionsOf(page)).toEqual(['plain']);
+    const [first, second] = await fixtureRecords(worker);
+    expect(first!.fire?.outcome).toBe('sent');
+    expect(second!.decision).toEqual({ action: 'retarget', candidate: 0 });
+    expect(second!.fire).toEqual({ outcome: 'failed', failure: 'second-press' });
   });
 });
 
@@ -532,6 +556,64 @@ test.describe('retargeting stays on only while the log passes the gates', () => 
     expect(await settingsOf(worker)).toMatchObject({ mode: 'shadow', offReason: 'gates' });
   });
 
+  test('waits for the worker before it acts under a new decision', async ({ page, worker }) => {
+    await turnOnRetargeting(worker);
+    // What a page finds right after an update: retargeting on, and gates that
+    // last passed with another decision.
+    await worker.evaluate(async () => {
+      const settings = (await chrome.storage.local.get('settings')).settings as object;
+      await chrome.storage.local.set({ settings: { ...settings, gatedWith: 'an older decision' } });
+    });
+    await page.goto('/replay.html');
+    await miss(page, 184, 116);
+    expect(await actionsOf(page)).toEqual([]);
+    // Logging that click made the worker judge the log again, with the decision it carries.
+    await expect
+      .poll(async () => (await settingsOf(worker)).gatedWith)
+      .not.toBe('an older decision');
+    await miss(page, 384, 216);
+    expect(await actionsOf(page)).toEqual(['pressed']);
+  });
+
+  test('counts a wrong mark on the Review tab as a report, once a click', async ({
+    page,
+    worker,
+    extensionId,
+    context,
+  }) => {
+    await turnOnRetargeting(worker, { reviewed: 700 });
+    await page.goto('/replay.html');
+    await miss(page, 184, 116);
+    await miss(page, 384, 216);
+    const [first, second] = await fixtureRecords(worker);
+    const review = await context.newPage();
+    await review.goto(`chrome-extension://${extensionId}/review.html`);
+    const markOnReviewTab = (recordId: string, verdict: string) =>
+      review.evaluate((mark) => chrome.runtime.sendMessage({ type: 'review', review: mark }), {
+        recordId,
+        candidate: 0,
+        verdict,
+        t: Date.now(),
+      });
+
+    // The same click reported twice, once on each tab, is one report.
+    await worker.evaluate((id) => heyo.reportWrong(id, false), first!.id);
+    await markOnReviewTab(first!.id, 'wrong');
+    expect(await settingsOf(worker)).toMatchObject({ mode: 'retarget' });
+    expect((await settingsOf(worker)).wrongReports).toHaveLength(1);
+
+    // A mark changed to right takes the report back.
+    await markOnReviewTab(first!.id, 'right');
+    expect((await settingsOf(worker)).wrongReports).toHaveLength(0);
+
+    // Two different clicks marked wrong on the Review tab are two reports in a week.
+    await markOnReviewTab(first!.id, 'wrong');
+    await markOnReviewTab(second!.id, 'wrong');
+    const settings = await settingsOf(worker);
+    expect(settings.wrongReports).toHaveLength(2);
+    expect(settings).toMatchObject({ mode: 'shadow', offReason: 'wrong-clicks' });
+  });
+
   test('keeps both of two wrong reports sent at once', async ({
     page,
     worker,
@@ -640,6 +722,8 @@ test.describe('the retargeting tab', () => {
     await expect(review.getByRole('row', { name: /^Sent on/ })).toContainText('1');
     const fire = review.locator('.fires li');
     await expect(fire).toContainText('Hash link');
+    await expect(review.locator('.shares li')).toContainText('127.0.0.1');
+    await expect(review.locator('.shares li')).toContainText('0 of 1 changed nothing');
 
     await fire.getByRole('button', { name: 'Wrong', exact: true }).click();
     await expect(fire).toContainText('Marked wrong');

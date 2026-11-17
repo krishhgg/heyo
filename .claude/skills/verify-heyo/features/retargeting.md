@@ -8,9 +8,11 @@ With retargeting on, a click that lands on empty space on an allowed site, that 
 - `send` dispatches one click on the picked control, so its action happens exactly once.
 - `allowlist` acts only on sites in `src/extension/allowlist.ts`, and only in the top frame. No copy of the list is stored.
 - `held` holds one fire in ten back as a control and logs it as `held`.
+- `double-click` sends the first click of a double-click on and never the second.
 - `refusals` sends nothing when the user is already pressing again or presses a key, when the window loses focus, or when the control moved, changed size, changed its name or is covered. It sends nothing more when the control removes itself in the middle of the press.
 - `double-click-wait` optionally waits half a second. It sends nothing if a press or a key comes first, if the user presses inside an iframe or goes to another window, if the page changes or starts to leave, or if retargeting is turned off in the meantime.
-- `wrong-report` records a wrong click as a wrong review mark and turns retargeting off when the rules say so.
+- `wrong-report` records a wrong click as a wrong review mark and turns retargeting off when the rules say so. A wrong mark on the Review tab for a sent click counts the same, once a click.
+- `decision-version` keeps a page from acting under a decision the gates have not passed with.
 - `badge` marks the toolbar button on that tab for a moment after a click is sent on.
 - `live-sites` checks each allowed real site with a scripted near miss.
 
@@ -35,6 +37,7 @@ Preconditions:
 
 - The drive seeds the log with `heyo.importLog`, lets retargeting act on the fixture host with `heyo.allowTestHosts` and sets the held share to 0 with `heyo.holdTestShare`. All three are test hooks on the service worker. A user reaches a passing log only by browsing and reviewing, and has no way to add a site.
 - The decision needs the cursor to have moved in the 300 ms before the press. A drive that clicks without moving the mouse first gets no fire.
+- Two presses within half a second and 5 px are a double-click to heyo, also when a test sends them as two separate clicks. A test that wants two separate near misses in one spot has to wait longer or move away.
 - heyo watches a sent click for 400 ms before it logs the outcome. Read the log at least 600 ms after a near miss.
 - A popup or a new tab takes focus from a real window, which heyo counts as a reaction. A Playwright window keeps focus, so `reacted` is false there.
 - A fire is `failed` with `second-press` when the user presses again within the first click's 50 ms settle time. The test sends the retry without waiting for the first click's answer, so it lands inside that time.

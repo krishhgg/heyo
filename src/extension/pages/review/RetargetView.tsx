@@ -6,7 +6,7 @@ import type { ClickRecord } from '../../../core/types';
 import type { Log } from '../../db';
 import type { PageRequest } from '../../messages';
 import { sitesOf, type Settings } from '../../settings';
-import { percentBeside } from './data';
+import { percentBeside, verdictsOf } from './data';
 
 interface Props {
   log: Log;
@@ -55,11 +55,22 @@ export function RetargetView({ log, score, settings, request }: Props) {
   const gates = retargetGates(score);
   const on = settings.mode === 'retarget';
   const sites = sitesOf(settings);
-  const wrong = new Set(log.reviews.filter((r) => r.verdict === 'wrong').map((r) => r.recordId));
+  // The latest mark counts, as in the gate. A mark changed to right on the Review tab is not wrong.
+  const verdicts = verdictsOf(log.reviews);
+  const isWrong = (record: ClickRecord) =>
+    record.decision.action === 'retarget' &&
+    verdicts.get(`${record.id}:${record.decision.candidate}`) === 'wrong';
   const sent = log.records.filter(wasSent);
   const recent = [...sent].sort((a, b) => b.t - a.t).slice(0, RECENT);
   const held = log.records.filter((r) => r.fire?.outcome === 'held').length;
   const ignoredShare = score.sent > 0 ? score.sentIgnored / score.sent : null;
+  const bySite = new Map<string, { sent: number; ignored: number }>();
+  for (const record of sent) {
+    const site = bySite.get(record.site) ?? { sent: 0, ignored: 0 };
+    site.sent++;
+    if (!record.fire?.reacted) site.ignored++;
+    bySite.set(record.site, site);
+  }
   const doubleShare = score.fires > 0 ? score.doublePress / score.fires : null;
 
   return (
@@ -167,9 +178,9 @@ export function RetargetView({ log, score, settings, request }: Props) {
           <h2>Clicks heyo sent on</h2>
         </header>
         <p class="sheet-note">
-          If one of these was not what you meant, say so here. A report counts as a wrong mark in
-          the gate above. Retargeting turns itself off after more than {GATES.maxWrongPerWeek} in a
-          week, or after one that could not be undone.
+          If one of these was not what you meant, say so here. A report is a wrong mark in the gate
+          above, so one report turns retargeting off if the gate then fails. It also turns off after
+          more than {GATES.maxWrongPerWeek} in a week, or after one that could not be undone.
         </p>
         <table>
           <tbody>
@@ -186,9 +197,9 @@ export function RetargetView({ log, score, settings, request }: Props) {
                 {ignoredShare !== null && `\u00a0(${percent(ignoredShare)})`}
               </td>
               <td>
-                runs high, since a click that worked without changing the page counts too. If a site
-                is above {100 * GATES.maxIgnoredShare}% and its clicks did nothing, it comes off the
-                list
+                runs high, since a click that worked without changing the page counts too. A site
+                over {100 * GATES.maxIgnoredShare}% whose clicks did nothing comes off the list in
+                the code
               </td>
             </tr>
             <tr>
@@ -198,6 +209,22 @@ export function RetargetView({ log, score, settings, request }: Props) {
             </tr>
           </tbody>
         </table>
+        {bySite.size > 0 && (
+          <ul class="shares" aria-label="Clicks that changed nothing, by site">
+            {[...bySite].map(([site, n]) => (
+              <li key={site}>
+                <span class="num">{site}</span>
+                <span>
+                  {n.ignored.toLocaleString()} of {n.sent.toLocaleString()} changed nothing (
+                  {percent(n.ignored / n.sent)})
+                </span>
+                {n.ignored / n.sent > GATES.maxIgnoredShare && (
+                  <span class="status status-fail">over {100 * GATES.maxIgnoredShare}%</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
         {recent.length > 0 && (
           <ul class="fires">
             {recent.map((record) => (
@@ -209,7 +236,7 @@ export function RetargetView({ log, score, settings, request }: Props) {
                     {record.fire?.reacted === false && ', changed nothing heyo could see'}
                   </span>
                 </span>
-                {wrong.has(record.id) ? (
+                {isWrong(record) ? (
                   <span class="status status-fail">Marked wrong</span>
                 ) : (
                   <span class="fire-actions">

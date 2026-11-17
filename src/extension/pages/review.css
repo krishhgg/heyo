@@ -839,6 +839,21 @@ td.num {
   border-radius: 6px;
 }
 
+.shares {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shares li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+}
+
 .fires {
   margin: 16px 0 0;
   padding: 0;

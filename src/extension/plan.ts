@@ -1,12 +1,20 @@
 // Decides what retargeting does about one logged click.
 import type { ClickRecord } from '../core/types';
 import { heldShareOf, sitesOf, type Settings } from './settings';
+import { decisionVersion } from './version';
 
 export type FirePlan = 'log' | 'hold' | 'send';
 
-/** True when retargeting is on and may act on pages of this site. */
+/**
+ * True when retargeting is on, the gates passed with the decision this code
+ * carries, and the site is one where it may act.
+ */
 export function mayAct(settings: Settings, site: string): boolean {
-  return settings.mode === 'retarget' && sitesOf(settings).includes(site);
+  return (
+    settings.mode === 'retarget' &&
+    settings.gatedWith === decisionVersion &&
+    sitesOf(settings).includes(site)
+  );
 }
 
 /**

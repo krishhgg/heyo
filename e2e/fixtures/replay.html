@@ -33,6 +33,10 @@
         width: 80px;
         height: 20px;
       }
+      /* With ?noselect a second press selects no word, as on pages that turn selection off. */
+      body.noselect {
+        user-select: none;
+      }
       /* With ?move or ?shrink, pointing at the zone moves or shrinks Mover without touching the DOM. */
       body.move:has(#zone:hover) #mover {
         left: 960px !important;

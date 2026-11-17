@@ -1,6 +1,6 @@
 import { GATES, retargetGates } from '../../core/gates';
 import { score } from '../../core/metrics';
-import type { LogExport, Review } from '../../core/types';
+import type { ClickRecord, LogExport, Review } from '../../core/types';
 import { decide } from '../../decision';
 import {
   addCount,
@@ -54,14 +54,24 @@ async function store(message: WorkerMessage, tabId: number | undefined): Promise
   await enforce();
 }
 
+const badgeTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
 /** Marks the toolbar button on one tab for a moment, so the user can tell heyo acted there. */
 function flashBadge(tabId: number | undefined): void {
   if (tabId === undefined) return;
   const set = (text: string) => chrome.action.setBadgeText({ text, tabId }).catch(() => undefined);
   void chrome.action.setBadgeBackgroundColor({ color: '#1f3fd6', tabId }).catch(() => undefined);
   void set('→');
-  // The tab may be closed by then, which is fine.
-  setTimeout(() => void set(''), BADGE_MS);
+  // One timer a tab, started again by each click, so a second click keeps the mark its full time.
+  clearTimeout(badgeTimers.get(tabId));
+  badgeTimers.set(
+    tabId,
+    setTimeout(() => {
+      badgeTimers.delete(tabId);
+      // The tab may be closed by then, which is fine.
+      void set('');
+    }, BADGE_MS),
+  );
 }
 
 /** True when the local log passes both data gates in front of retargeting. */
@@ -71,57 +81,103 @@ async function gatesPass(): Promise<boolean> {
 }
 
 /**
- * Retargeting stays on only while the log passes the gates. This runs after
- * every change to the log and each time the worker starts, which covers an
- * update that brings a new decision. It turns retargeting off when the gates
- * no longer pass.
+ * Retargeting stays on only while the log passes the gates with the decision
+ * this worker carries. This runs after every change to the log and each time
+ * the worker starts, which covers an update that brings a new decision. It
+ * turns retargeting off when the gates no longer pass, and otherwise notes
+ * the decision they passed with, which pages wait for before they act.
  */
 async function enforce(): Promise<Settings> {
   const settings = await readSettings();
-  if (settings.mode !== 'retarget' || (await gatesPass())) return settings;
-  return writeSettings({ mode: 'shadow', offReason: 'gates' });
+  if (settings.mode !== 'retarget') return settings;
+  if (!(await gatesPass())) return writeSettings({ mode: 'shadow', offReason: 'gates' });
+  if (settings.gatedWith === decisionVersion) return settings;
+  return writeSettings({ gatedWith: decisionVersion });
 }
 
 /** Turns retargeting on only when the gates pass. Turning it off always works. */
 async function setMode(mode: Settings['mode']): Promise<PageReply> {
-  if (mode === 'retarget' && !(await gatesPass())) {
-    return { ok: false, settings: await readSettings() };
+  if (mode === 'shadow') {
+    return { ok: true, settings: await writeSettings({ mode, offReason: null }) };
   }
-  return { ok: true, settings: await writeSettings({ mode, offReason: null }) };
+  if (!(await gatesPass())) return { ok: false, settings: await readSettings() };
+  const change = { mode, offReason: null, gatedWith: decisionVersion };
+  return { ok: true, settings: await writeSettings(change) };
+}
+
+/** The click with this id, if heyo sent it on to the control the mark is about. */
+async function sentClick(recordId: string, candidate?: number): Promise<ClickRecord | null> {
+  const { records } = await readLog();
+  const record = records.find((r) => r.id === recordId);
+  if (!record || record.decision.action !== 'retarget' || record.fire?.outcome !== 'sent') {
+    return null;
+  }
+  return candidate === undefined || candidate === record.decision.candidate ? record : null;
+}
+
+/**
+ * Applies the turn-off rules after a mark, and stores the reports. Retargeting
+ * turns off after a wrong click that could not be undone, after more than one
+ * reported wrong click in a week, or when the marks no longer pass the gates.
+ * `reported` says this mark was a wrong click heyo sent on.
+ */
+async function settle(
+  wrongReports: Settings['wrongReports'],
+  reported: boolean,
+  irreversible: boolean,
+): Promise<Settings> {
+  let change: Partial<Settings> = { wrongReports };
+  if (irreversible) {
+    change = { ...change, mode: 'shadow', offReason: 'irreversible' };
+  } else if (reported && wrongReports.length > GATES.maxWrongPerWeek) {
+    change = { ...change, mode: 'shadow', offReason: 'wrong-clicks' };
+  } else if ((await readSettings()).mode === 'retarget' && !(await gatesPass())) {
+    change = { ...change, mode: 'shadow', offReason: reported ? 'wrong-clicks' : 'gates' };
+  }
+  return writeSettings(change);
+}
+
+/** This week's reports, with one for this click if it has none yet. */
+function withReport(reports: Settings['wrongReports'], id: string, now: number) {
+  const recent = reports.filter((r) => r.t > now - WEEK_MS);
+  return recent.some((r) => r.id === id) ? recent : [...recent, { id, t: now }];
 }
 
 /**
  * Records that a click heyo sent on was wrong. The report counts as a wrong
- * review mark for that fire. Retargeting turns off after a wrong click that
- * could not be undone, after more than one report in a week, or when the
- * marks no longer pass the gates.
+ * review mark for that fire, and a click is reported once however often it is
+ * marked.
  */
 async function reportWrong(recordId: string, irreversible: boolean): Promise<PageReply> {
   const now = Date.now();
-  const { records } = await readLog();
-  const record = records.find((r) => r.id === recordId);
   // A report is about a click heyo sent on, and nothing else.
-  if (!record || record.decision.action !== 'retarget' || record.fire?.outcome !== 'sent') {
+  const record = await sentClick(recordId);
+  if (!record || record.decision.action !== 'retarget') {
     return { ok: false, settings: await readSettings() };
   }
   await putReview({ recordId, candidate: record.decision.candidate, verdict: 'wrong', t: now });
-  const before = await readSettings();
-  const wrongReports = [...before.wrongReports.filter((t) => t > now - WEEK_MS), now];
-  let change: Partial<Settings> = { wrongReports };
-  if (irreversible) change = { ...change, mode: 'shadow', offReason: 'irreversible' };
-  else if (wrongReports.length > GATES.maxWrongPerWeek || !(await gatesPass())) {
-    change = { ...change, mode: 'shadow', offReason: 'wrong-clicks' };
-  }
-  return { ok: true, settings: await writeSettings(change) };
+  const reports = withReport((await readSettings()).wrongReports, recordId, now);
+  return { ok: true, settings: await settle(reports, true, irreversible) };
 }
 
-/** Stores a mark from the review page. */
+/**
+ * Stores a mark from the review page. A wrong mark on a click heyo sent on is
+ * a report of a wrong click, the same as one made on the Retargeting tab, and
+ * a mark changed to something else takes that report back.
+ */
 async function mark(review: Review): Promise<PageReply> {
   await putReview(review);
-  return { ok: true, settings: await enforce() };
+  const now = Date.now();
+  const before = (await readSettings()).wrongReports;
+  const sent = (await sentClick(review.recordId, review.candidate)) !== null;
+  const wrong = sent && review.verdict === 'wrong';
+  let reports = before;
+  if (wrong) reports = withReport(before, review.recordId, now);
+  else if (sent) reports = before.filter((r) => r.id !== review.recordId);
+  return { ok: true, settings: await settle(reports, wrong, false) };
 }
 
-/** Deletes the log, and the report times that were about it. An empty log passes no gate. */
+/** Deletes the log, and the reports that were about it. An empty log passes no gate. */
 async function clear(): Promise<PageReply> {
   await clearLog();
   await writeSettings({ wrongReports: [] });

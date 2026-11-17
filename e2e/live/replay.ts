@@ -23,8 +23,9 @@ async function recordsFor(worker: Worker, host: string): Promise<ClickRecord[]> 
 
 /**
  * Clicks just outside a control, on each side in turn, until heyo sends the
- * click on to that control. Returns the record of that click. Throws if no
- * side gives a clean near miss, which means the control cannot be tested this way.
+ * click on to that control. Returns the record of that click. Throws if heyo
+ * sends a click on to anything else, and if no side gives a clean near miss,
+ * which means the control cannot be tested this way.
  */
 export async function missAndSend(
   page: Page,
@@ -55,7 +56,13 @@ export async function missAndSend(
       record?.decision.action === 'retarget'
         ? record.features.candidates[record.decision.candidate]
         : undefined;
-    if (record?.fire?.outcome === 'sent' && picked && label.test(picked.label)) return record;
+    if (record?.fire?.outcome === 'sent') {
+      if (picked && label.test(picked.label)) return record;
+      // A click sent on to something else is a wrong click on a real site, not a side to skip.
+      throw new Error(
+        `heyo sent the click on to "${picked?.label ?? ''}", not the control under test.`,
+      );
+    }
     seen.push(
       record
         ? `${JSON.stringify(record.decision)} fire ${JSON.stringify(record.fire ?? null)}`

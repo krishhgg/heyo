@@ -18,8 +18,14 @@ export interface Settings {
    * that could not be undone.
    */
   offReason: null | 'gates' | 'wrong-clicks' | 'irreversible';
-  /** Times at which the user reported a wrong click. */
-  wrongReports: number[];
+  /** The wrong clicks the user reported: which click, and when. One entry a click. */
+  wrongReports: { id: string; t: number }[];
+  /**
+   * The version of the decision the gates last passed with. Retargeting acts
+   * only under that version, so a page that loads a new decision after an
+   * update sends nothing until the worker has judged it.
+   */
+  gatedWith: string | null;
   /**
    * Hostnames where retargeting may act on top of the list in the code. Only
    * tests and verification drives set this, to allow their fixture pages.
@@ -34,6 +40,7 @@ export const DEFAULT_SETTINGS: Settings = {
   waitForDoubleClick: false,
   offReason: null,
   wrongReports: [],
+  gatedWith: null,
   testHosts: [],
   testHeldShare: null,
 };

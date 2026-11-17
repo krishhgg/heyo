@@ -1,7 +1,12 @@
 // Shadow mode. Watches plain left clicks, and for each one that lands on empty
 // space logs what was nearby, what the decision would have done, whether the
 // page reacted, and where the next press went. It changes nothing on the page.
-import { DOUBLE_PRESS_MS, FOLLOW_UP_WINDOW_MS, MISS_RADIUS_PX } from '../../core/labels';
+import {
+  DOUBLE_PRESS_MS,
+  DOUBLE_PRESS_PX,
+  FOLLOW_UP_WINDOW_MS,
+  MISS_RADIUS_PX,
+} from '../../core/labels';
 import type { ClickFeatures, ClickRecord, Fire, FollowUp, PathSample } from '../../core/types';
 import { decide } from '../../decision';
 import type { WorkerMessage } from '../messages';
@@ -45,6 +50,12 @@ interface Press {
   up: number | null;
   /** Largest distance the pointer has moved from the press point. */
   move: number;
+  /**
+   * True for a press in the same spot as the one before it, within the
+   * double-click interval: the second click of a double-click, or a retry so
+   * quick that the first click may still be acted on.
+   */
+  repeat: boolean;
   hit: Hit;
   /** Set only for a press on empty space. */
   empty: {
@@ -120,6 +131,8 @@ export function startCapture(): void {
   /** True while key presses are listened for, which is only while a click may be sent on. */
   let keys = false;
   let pending: Pending | null = null;
+  /** The last plain left press, to tell a double-click's second press. */
+  let lastPress: { t: number; x: number; y: number } | null = null;
   /**
    * A click heyo is about to send on, once the double-click interval has
    * passed. `watch` sees what the page does in the meantime.
@@ -213,7 +226,9 @@ export function startCapture(): void {
     // A click is sent on only once its settle time has run out in peace. If the
     // user is already pressing again, sending it would act twice. If the user
     // has done anything else, the click is no longer the last thing they did.
-    const inPeace = cause === 'settled' && !acted;
+    // The second click of a double-click is never sent on. The first one was, or
+    // was not for a reason, and a second send would act twice.
+    const inPeace = cause === 'settled' && !acted && !p.repeat;
     if (plan === 'send' && !inPeace) record.fire = { outcome: 'failed', failure: 'second-press' };
     if (!lone) send({ type: 'record', record });
     if (plan === 'send' && inPeace) sendOn(record, p);
@@ -391,6 +406,11 @@ export function startCapture(): void {
     const origin = path[0];
     if (!(origin instanceof Element)) return;
     const at = { x: event.clientX, y: event.clientY, t: event.timeStamp };
+    const repeat =
+      lastPress !== null &&
+      at.t - lastPress.t <= DOUBLE_PRESS_MS &&
+      Math.hypot(at.x - lastPress.x, at.y - lastPress.y) <= DOUBLE_PRESS_PX;
+    lastPress = at;
     // The event path stops at a closed shadow root's host. Look inside it.
     const target = deepestAt(origin, at.x, at.y);
     const lookup = listenerLookup();
@@ -434,7 +454,7 @@ export function startCapture(): void {
         },
       };
     }
-    press = { ...at, epoch: Date.now(), up: null, move: 0, hit, empty };
+    press = { ...at, epoch: Date.now(), up: null, move: 0, repeat, hit, empty };
   }
 
   function onPointerMove(event: PointerEvent): void {
@@ -478,6 +498,8 @@ export function startCapture(): void {
     if ((event as PointerEvent).pointerType !== 'mouse') return;
     const p = press;
     press = null;
+    // The browser counts clicks by the system's own double-click settings.
+    if (event.detail > 1) p.repeat = true;
     if (!p.empty) {
       send({ type: 'count', site, field: 'hits' });
       return;
