@@ -16,6 +16,15 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "e2e", "scorer", "synth", "loop", "playwright.config.ts", "vitest.config.ts"],
+  "include": [
+    "src",
+    "e2e",
+    "scorer",
+    "synth",
+    "loop",
+    "scripted",
+    "playwright.config.ts",
+    "vitest.config.ts"
+  ],
   "exclude": ["loop/fixtures"]
 }

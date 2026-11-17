@@ -168,3 +168,16 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - The lint is an AST check, not a text search. It limits numbers to 3 significant digits, strings to short lower-case keywords, and bans hostnames, selectors, URLs, paths, I/O, time and randomness. It also type-checks the decision against the repo's core, so reading a field the features do not hold is an error.
 - CI runs the lint on `src/decision`, so a hand edit is held to the same rules as the agent.
 - `--apply` copies the best decision into `src/decision` only when both held-out gates pass. A person still reads the diff before it ships.
+
+## Scripted run
+
+- The gates are judged on scripted data in two ways. The per-site replay tests are the plan's third gate. The scripted run covers the two data gates: it produces a log the real extension wrote, and `npm run gates` judges it.
+- The scripted run plays the synthetic generator's own clicks and adds no second model of a user. With the same seed it plays the clicks `npm run synth` simulates, so a difference between the two logs comes from the capture code and the browser, not from the model. The generator was split into a plan for each click and a simulation of it. Its logs are byte for byte what they were.
+- Review marks come from what each click was planned for: the control it was aimed at is right, any other is wrong, and a click meant for empty space has no right target. As with a synthetic log, these are not hand reviews.
+- Each click is played on a fresh page. The next click on the same page would otherwise arrive within 1.5 seconds and be logged as a retry.
+- The pointer path, the press and the wait before a retry are played in real time, because the extension measures them with the real clock.
+- Only a click that can leave a record is always played: one that lands on empty space within 30 px of a control. Of the rest, plain hits and clicks far from everything, 2% are played and all are counted in the day's click counts as the generator counted them. Playing every one would take a day and change neither gate.
+- A click planned into a window without focus is counted and not played. A page driven by Playwright always has focus.
+- The fixture page reacts to an empty-space click when the plan says the page reacts: it changes a counter in a corner, or moves focus. On a site the generator marks as changing on its own, the page ticks 60 times a second.
+- The extension stamps clicks with the real clock, and it has no hook to change that. Each simulated day is exported on its own and moved back a whole number of days afterwards.
+- The full run takes 10 to 25 minutes, so CI runs it on main and on demand. Every pull request runs one short scripted day in the browser tests.

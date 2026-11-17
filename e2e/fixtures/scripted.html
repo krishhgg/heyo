@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: scripted scenes</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font:
+          11px/1.2 system-ui,
+          sans-serif;
+      }
+      .control {
+        position: absolute;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        border: 1px solid #99a;
+        background: #eef;
+        overflow: hidden;
+        white-space: nowrap;
+        text-align: center;
+      }
+      #status,
+      #sink {
+        position: absolute;
+        left: 4px;
+        bottom: 4px;
+        color: #999;
+      }
+      #sink {
+        left: 60px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- What the page changes when it reacts to a click, kept in a corner away from every scene. -->
+    <div id="status">0</div>
+    <div id="sink" tabindex="-1">.</div>
+    <script>
+      // The scripted run draws one scene of controls here and then clicks in it
+      // with a real mouse. Each control is drawn the way its description says:
+      // a native button or link, a div with a button role, a div that only
+      // shows a pointer cursor, a text field, or a region heyo cannot see into.
+      const status = document.getElementById('status');
+      let reaction = null;
+      let count = 0;
+
+      window.render = (controls, options) => {
+        for (const control of controls) {
+          const { tag } = control;
+          const element = document.createElement(tag);
+          element.className = 'control';
+          Object.assign(element.style, {
+            left: `${control.x}px`,
+            top: `${control.y}px`,
+            width: `${control.w}px`,
+            height: `${control.h}px`,
+          });
+          if (control.kind === 'control') {
+            if (tag === 'input') {
+              element.type = control.type ?? 'text';
+              element.setAttribute('aria-label', control.label);
+            } else {
+              element.textContent = control.label;
+            }
+            if (tag === 'a') element.href = '#';
+            if (control.role) {
+              element.setAttribute('role', control.role);
+              element.tabIndex = 0;
+            }
+            if (tag === 'div') element.style.cursor = 'pointer';
+            if (control.disabled) {
+              if (tag === 'button') element.disabled = true;
+              else element.setAttribute('aria-disabled', 'true');
+            }
+            // A link here goes nowhere, so a click on one does not leave the page.
+            element.addEventListener('click', (event) => event.preventDefault());
+          }
+          document.body.append(element);
+        }
+        reaction = options.reaction;
+        // A page that changes on its own, like a ticker or a playing video's controls.
+        if (options.churn) setInterval(() => (status.dataset.tick = String(count++)), 16);
+      };
+
+      // Some pages do something about a click on empty space: close a menu,
+      // clear a highlight, move focus. The scripted run says which this one does.
+      document.addEventListener('mousedown', (event) => {
+        if (event.target.closest('.control')) return;
+        if (reaction === 'mutation') status.textContent = String(++count);
+      });
+      document.addEventListener('click', (event) => {
+        if (event.target.closest('.control')) return;
+        if (reaction === 'focus') document.getElementById('sink').focus();
+      });
+    </script>
+  </body>
+</html>
