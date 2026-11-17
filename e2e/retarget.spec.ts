@@ -214,6 +214,39 @@ test.describe('a near miss with retargeting on', () => {
   });
 });
 
+test.describe('doing something else right after the miss', () => {
+  // Each of these lands inside the first click's 50 ms settle time, before heyo
+  // has decided anything. They are sent without waiting for the click's answer.
+  for (const wait of [false, true]) {
+    const mode = wait ? 'with the double-click wait' : 'without the wait';
+
+    test(`a key press stops the click, ${mode}`, async ({ page, worker }) => {
+      await turnOnRetargeting(worker);
+      await worker.evaluate((value) => heyo.setWaitForDoubleClick(value), wait);
+      await page.goto('/replay.html');
+      await arrive(page, 184, 116);
+      await Promise.all([page.mouse.down(), page.mouse.up(), page.keyboard.press('Escape')]);
+      await page.waitForTimeout(1100);
+      expect(await actionsOf(page)).toEqual([]);
+      const [record] = await fixtureRecords(worker);
+      expect(record!.fire).toEqual({ outcome: 'failed', failure: 'second-press' });
+    });
+
+    test(`a press of the right button stops the click, ${mode}`, async ({ page, worker }) => {
+      await turnOnRetargeting(worker);
+      await worker.evaluate((value) => heyo.setWaitForDoubleClick(value), wait);
+      await page.goto('/replay.html');
+      await arrive(page, 184, 116);
+      await Promise.all([page.mouse.down(), page.mouse.up(), page.mouse.down({ button: 'right' })]);
+      await page.waitForTimeout(1100);
+      await page.mouse.up({ button: 'right' });
+      expect(await actionsOf(page)).toEqual([]);
+      const [record] = await fixtureRecords(worker);
+      expect(record!.fire).toEqual({ outcome: 'failed', failure: 'second-press' });
+    });
+  }
+});
+
 test.describe('waiting out the double-click interval', () => {
   test.beforeEach(async ({ page, worker }) => {
     await turnOnRetargeting(worker);
@@ -266,10 +299,9 @@ test.describe('waiting out the double-click interval', () => {
     x: number,
     y: number,
   ) {
-    await arrive(page, x, y);
-    await page.mouse.down();
-    await page.mouse.up();
-    await expect.poll(async () => (await fixtureRecords(worker)).length).toBe(1);
+    // A fixed short wait and no polling, so the test acts well inside the interval.
+    await clickAt(page, x, y);
+    expect(await fixtureRecords(worker)).toHaveLength(1);
   }
 
   /** What became of that miss, once the interval is over. */
@@ -314,6 +346,19 @@ test.describe('waiting out the double-click interval', () => {
     expect(await outcome(page, worker)).toEqual({
       actions: [],
       fire: { outcome: 'failed', failure: 'off' },
+    });
+  });
+
+  test('sends nothing when the user presses inside an iframe in the meantime', async ({
+    page,
+    worker,
+  }) => {
+    await waitingMiss(page, worker, 184, 116);
+    // The page's own listeners never see this press. The window losing focus to the frame is the sign.
+    await page.mouse.click(560, 500);
+    expect(await outcome(page, worker)).toEqual({
+      actions: [],
+      fire: { outcome: 'failed', failure: 'second-press' },
     });
   });
 
@@ -364,16 +409,26 @@ test.describe('a wrong click report', () => {
     await page.goto('/replay.html');
   });
 
-  test('turns retargeting off when the marks no longer pass the gate', async ({ worker }) => {
+  test('turns retargeting off when the marks no longer pass the gate', async ({ page, worker }) => {
     await worker.evaluate(() => heyo.clearLog());
     await turnOnRetargeting(worker, { reviewed: 320 });
-    const log = await worker.evaluate(() => heyo.exportLog());
-    const reply = await worker.evaluate((id) => heyo.reportWrong(id, false), log.records[0]!.id);
+    await miss(page, 184, 116);
+    const [sent] = await fixtureRecords(worker);
+    const reply = await worker.evaluate((id) => heyo.reportWrong(id, false), sent!.id);
     // One wrong fire needs 473 reviewed. This log has 320.
     expect(reply).toMatchObject({
       ok: true,
       settings: { mode: 'shadow', offReason: 'wrong-clicks' },
     });
+  });
+
+  test('is refused for a click heyo did not send on', async ({ worker }) => {
+    const log = await worker.evaluate(() => heyo.exportLog());
+    const reply = await worker.evaluate((id) => heyo.reportWrong(id, false), log.records[0]!.id);
+    expect(reply).toMatchObject({ ok: false, settings: { mode: 'retarget', wrongReports: [] } });
+    expect(
+      (await worker.evaluate(() => heyo.exportLog())).reviews.some((r) => r.verdict === 'wrong'),
+    ).toBe(false);
   });
 
   test('counts as a wrong review, and a second one in a week turns retargeting off', async ({

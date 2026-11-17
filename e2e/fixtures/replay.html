@@ -94,6 +94,13 @@
     <button id="vanisher" class="at" style="left: 300px; top: 400px">Vanisher</button>
     <p id="status" class="at" style="left: 500px; top: 400px; margin: 0"></p>
     <div id="zone" class="at" style="left: 900px; top: 480px; width: 80px; height: 32px"></div>
+    <!-- A frame of its own, well away from every control. A press in it never reaches the page's listeners. -->
+    <iframe
+      id="frame"
+      class="at"
+      style="left: 500px; top: 480px; width: 160px; height: 60px; border: 0"
+      srcdoc="<button style='width: 120px; height: 40px'>Inside</button>"
+    ></iframe>
 
     <script>
       // Everything a control did, in order. A test checks that the intended action happened exactly once.

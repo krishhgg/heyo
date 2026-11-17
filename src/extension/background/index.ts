@@ -100,7 +100,8 @@ async function reportWrong(recordId: string, irreversible: boolean): Promise<Pag
   const now = Date.now();
   const { records } = await readLog();
   const record = records.find((r) => r.id === recordId);
-  if (!record || record.decision.action !== 'retarget') {
+  // A report is about a click heyo sent on, and nothing else.
+  if (!record || record.decision.action !== 'retarget' || record.fire?.outcome !== 'sent') {
     return { ok: false, settings: await readSettings() };
   }
   await putReview({ recordId, candidate: record.decision.candidate, verdict: 'wrong', t: now });
@@ -172,8 +173,12 @@ chrome.runtime.onMessage.addListener(
   },
 );
 
-// The worker starts after an install, an update and a browser start, and whenever a message wakes it.
+// Whenever the worker starts, for whatever reason, it checks the gates once.
 void inTurn(enforce);
+// Chrome starts the worker for these two, so the check runs right after an
+// update that brings a new decision, and at browser start, before any page asks.
+chrome.runtime.onInstalled.addListener(() => void inTurn(enforce));
+chrome.runtime.onStartup.addListener(() => void inTurn(enforce));
 
 /** The toolbar button opens the review page, or switches to it if it is already open. */
 chrome.action.onClicked.addListener(() => {

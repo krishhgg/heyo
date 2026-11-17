@@ -8,8 +8,8 @@ With retargeting on, a click that lands on empty space on an allowed site, that 
 - `send` dispatches one click on the picked control, so its action happens exactly once.
 - `allowlist` acts only on sites in `src/extension/allowlist.ts`, and only in the top frame. No copy of the list is stored.
 - `held` holds one fire in ten back as a control and logs it as `held`.
-- `refusals` sends nothing when the user is already pressing again, or when the control moved, changed size, changed its name or is covered. It sends nothing more when the control removes itself in the middle of the press.
-- `double-click-wait` optionally waits half a second. It sends nothing if a press or a key comes first, if the page changes or starts to leave, or if retargeting is turned off in the meantime.
+- `refusals` sends nothing when the user is already pressing again or presses a key, when the window loses focus, or when the control moved, changed size, changed its name or is covered. It sends nothing more when the control removes itself in the middle of the press.
+- `double-click-wait` optionally waits half a second. It sends nothing if a press or a key comes first, if the user presses inside an iframe or goes to another window, if the page changes or starts to leave, or if retargeting is turned off in the meantime.
 - `wrong-report` records a wrong click as a wrong review mark and turns retargeting off when the rules say so.
 - `badge` marks the toolbar button on that tab for a moment after a click is sent on.
 - `live-sites` checks each allowed real site with a scripted near miss.

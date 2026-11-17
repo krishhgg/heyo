@@ -112,8 +112,13 @@ export function startCapture(): void {
   const background = new BackgroundWatch();
   const moves: Move[] = [];
   let press: Press | null = null;
-  /** The press whose click is waiting out the settle time. */
-  let settling: { press: Press; timer: number } | null = null;
+  /**
+   * The press whose click is waiting out the settle time. `acted` is set when
+   * the user did something else in that time.
+   */
+  let settling: { press: Press; timer: number; acted: boolean } | null = null;
+  /** True while key presses are listened for, which is only while a click may be sent on. */
+  let keys = false;
   let pending: Pending | null = null;
   /**
    * A click heyo is about to send on, once the double-click interval has
@@ -171,8 +176,9 @@ export function startCapture(): void {
   function finalize(cause: 'settled' | 'pressed' | 'unloading' = 'settled'): void {
     if (!settling) return;
     clearTimeout(settling.timer);
-    const p = settling.press;
+    const { press: p, acted } = settling;
     settling = null;
+    if (!waiting) listenForKeys(false);
     if (!p.empty) return;
     const reaction = p.empty.watch.stop(cause === 'unloading');
     const didReact = reacted(reaction);
@@ -205,12 +211,12 @@ export function startCapture(): void {
     const plan = lone ? 'log' : planFire(settings, site, record, Math.random());
     if (plan === 'hold') record.fire = { outcome: 'held' };
     // A click is sent on only once its settle time has run out in peace. If the
-    // user is already pressing again, sending it would act twice.
-    if (plan === 'send' && cause === 'pressed') {
-      record.fire = { outcome: 'failed', failure: 'second-press' };
-    }
+    // user is already pressing again, sending it would act twice. If the user
+    // has done anything else, the click is no longer the last thing they did.
+    const inPeace = cause === 'settled' && !acted;
+    if (plan === 'send' && !inPeace) record.fire = { outcome: 'failed', failure: 'second-press' };
     if (!lone) send({ type: 'record', record });
-    if (plan === 'send' && cause === 'settled') sendOn(record, p);
+    if (plan === 'send' && inPeace) sendOn(record, p);
     pending = {
       id: record.id,
       x: p.x,
@@ -222,13 +228,39 @@ export function startCapture(): void {
     };
   }
 
+  /**
+   * Key presses matter only between a click and the moment heyo sends it on,
+   * so they are listened for only then, and never in shadow mode.
+   */
+  function listenForKeys(on: boolean): void {
+    if (on === keys) return;
+    keys = on;
+    if (on) window.addEventListener('keydown', onKey, true);
+    else window.removeEventListener('keydown', onKey, true);
+  }
+
+  /**
+   * The user did something after the click: pressed a button or a key, or took
+   * the window's focus elsewhere, as a press in an iframe or another window
+   * does. A click heyo was going to send on is dropped, since it is no longer
+   * the last thing the user did.
+   */
+  function userActed(): void {
+    if (settling) settling.acted = true;
+    cancelWaiting('second-press');
+  }
+
+  function onKey(event: Event): void {
+    if (event.isTrusted) userActed();
+  }
+
   /** Ends the wait before a click goes out, and says whether the page did anything during it. */
   function endWaiting(): { id: string; reacted: boolean } | null {
     if (!waiting) return null;
     const { id, timer, watch } = waiting;
     waiting = null;
     clearTimeout(timer);
-    window.removeEventListener('keydown', onInputWhileWaiting, true);
+    listenForKeys(false);
     window.removeEventListener('beforeunload', onLeaveWhileWaiting, true);
     return { id, reacted: reacted(watch.stop()) };
   }
@@ -237,11 +269,6 @@ export function startCapture(): void {
   function cancelWaiting(failure: NonNullable<Fire['failure']>): void {
     const ended = endWaiting();
     if (ended) send({ type: 'fire', id: ended.id, fire: { outcome: 'failed', failure } });
-  }
-
-  /** A key pressed during the wait means the user has moved on, as a second press does. */
-  function onInputWhileWaiting(event: Event): void {
-    if (event.isTrusted) cancelWaiting('second-press');
   }
 
   /** A page that starts to leave has reacted, also when its unload takes a while. */
@@ -260,6 +287,8 @@ export function startCapture(): void {
     const go = () => {
       // Retargeting may have been turned off since the click was planned.
       if (!mayAct(settings, site)) return report({ outcome: 'failed', failure: 'off' });
+      // The user may have gone to another window in a way this script did not see.
+      if (!document.hasFocus()) return report({ outcome: 'failed', failure: 'second-press' });
       sendClick(control, candidate, { x: p.x, y: p.y }, report);
     };
     if (!settings.waitForDoubleClick) return go();
@@ -274,7 +303,7 @@ export function startCapture(): void {
       go();
     }, wait);
     waiting = { id: record.id, timer, watch };
-    window.addEventListener('keydown', onInputWhileWaiting, true);
+    listenForKeys(true);
     window.addEventListener('beforeunload', onLeaveWhileWaiting, true);
   }
 
@@ -349,9 +378,9 @@ export function startCapture(): void {
   }
 
   function onPointerDown(event: PointerEvent): void {
-    // Any press before the click was sent on means the user is double-clicking,
-    // retrying or doing something else. Nothing is sent after it.
-    if (event.isTrusted) cancelWaiting('second-press');
+    // Any press before the click was sent on, with any button, means the user is
+    // double-clicking, retrying or doing something else. Nothing is sent after it.
+    if (event.isTrusted) userActed();
     if (!event.isTrusted || event.pointerType !== 'mouse' || event.button !== 0) return;
     // A new press ends the previous click's settle time, so the page's reaction
     // to this press is not charged to that click.
@@ -453,7 +482,8 @@ export function startCapture(): void {
       send({ type: 'count', site, field: 'hits' });
       return;
     }
-    settling = { press: p, timer: window.setTimeout(() => finalize(), SETTLE_MS) };
+    settling = { press: p, timer: window.setTimeout(() => finalize(), SETTLE_MS), acted: false };
+    if (mayAct(settings, site)) listenForKeys(true);
   }
 
   /** A press the browser cancelled, such as one that became a native drag, has no click. */
@@ -471,7 +501,9 @@ export function startCapture(): void {
    * not the follow-up to the pending click.
    */
   function onBlur(event: FocusEvent): void {
-    if (event.target === window) pending = null;
+    if (event.target !== window) return;
+    pending = null;
+    userActed();
   }
 
   /**
@@ -500,6 +532,7 @@ export function startCapture(): void {
     settling?.press.empty?.watch.stop();
     if (settling) clearTimeout(settling.timer);
     endWaiting();
+    listenForKeys(false);
   }
 
   window.addEventListener('pointerdown', onPointerDown, true);
