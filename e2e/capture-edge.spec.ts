@@ -81,6 +81,33 @@ test.describe('text', () => {
     expect(log.counts[0]).toMatchObject({ clicks: 1, hits: 1, emptyIgnored: 0 });
   });
 
+  test('the space between lines is text when the words sit inside inline children', async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/text.html');
+    const gap = await page.evaluate(() => {
+      const range = document.createRange();
+      range.selectNodeContents(document.getElementById('run')!.firstChild!);
+      const [line] = range.getClientRects();
+      return { x: line!.left + 40, y: line!.bottom + 2 };
+    });
+    await clickAt(page, gap.x, gap.y);
+    const log = await readLog(worker);
+    expect(log.records).toEqual([]);
+    expect(log.counts[0]).toMatchObject({ clicks: 1, hits: 1, emptyIgnored: 0 });
+  });
+
+  test('the space under a link in running text stays empty space', async ({ page, worker }) => {
+    await page.goto('/text.html');
+    const gap = await page.evaluate(() => {
+      const [line] = document.getElementById('wrapped-link')!.getClientRects();
+      return { x: line!.left + line!.width / 2, y: line!.bottom + 2 };
+    });
+    const record = await recordOf(page, worker, gap.x, gap.y);
+    expect(record.features.candidates[0]).toMatchObject({ tag: 'a', label: 'its only link' });
+  });
+
   test('text slotted into a web component is text', async ({ page, worker }) => {
     await page.goto('/components.html');
     await clickAt(page, 740, 309);
@@ -108,7 +135,127 @@ test.describe('text', () => {
   });
 });
 
+test.describe('pages that track focus', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/focus.html');
+  });
+
+  test('a wrapper that marks itself while focus is inside has not reacted', async ({
+    page,
+    worker,
+  }) => {
+    await clickAt(page, 140, 120); // Inside, which takes focus and marks the wrapper
+    await expect(page.locator('#group')).toHaveAttribute('data-focus-within', '');
+
+    const record = await recordOf(page, worker, 396, 120); // 4 px left of Beside
+    await expect(page.locator('#group')).not.toHaveAttribute('data-focus-within', '');
+    expect(record.features).toMatchObject({
+      reacted: false,
+      blurred: true,
+      mutations: { total: 0, near: 0 },
+    });
+  });
+
+  test('a focus class taken off by a handler set up before heyo looked has not reacted', async ({
+    page,
+    worker,
+  }) => {
+    await clickAt(page, 140, 220); // Early
+    await expect(page.locator('#early')).toHaveClass(/has-focus-ring/);
+
+    const record = await recordOf(page, worker, 396, 220); // 4 px left of Next
+    await expect(page.locator('#early')).not.toHaveClass(/has-focus-ring/);
+    expect(record.features).toMatchObject({ reacted: false, blurred: true });
+  });
+
+  test('a menu that closes when its button loses focus has reacted', async ({ page, worker }) => {
+    await clickAt(page, 140, 320); // Menu, which opens its menu
+    await expect(page.locator('#menu')).toBeVisible();
+
+    const record = await recordOf(page, worker, 396, 320); // 4 px left of Other
+    await expect(page.locator('#menu')).toBeHidden();
+    expect(record.features).toMatchObject({ reacted: true, reaction: { mutation: true } });
+  });
+});
+
+test.describe('forms', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/forms.html');
+  });
+
+  test('clicking away from a dropdown after picking from it is not a reaction', async ({
+    page,
+    worker,
+  }) => {
+    await page.locator('#sort').selectOption('Oldest');
+    await page.locator('#sort').focus();
+
+    const record = await recordOf(page, worker, 296, 116); // 4 px left of Apply
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Apply', dist: 4 });
+    expect(record.features).toMatchObject({ reacted: false, leftField: false, blurred: true });
+    expect(record.decision).toEqual({ action: 'retarget', candidate: 0 });
+  });
+
+  test('what a custom dropdown shows is not typed text', async ({ page, worker }) => {
+    const record = await recordOf(page, worker, 424, 216); // 4 px right of Monthly report
+    expect(record.features.candidates[0]).toMatchObject({
+      label: 'Monthly report',
+      redacted: false,
+    });
+  });
+
+  test('a retry on a checkbox counts for the label that was the candidate', async ({
+    page,
+    worker,
+  }) => {
+    const label = await page.locator('#plan').boundingBox();
+    const record = await recordOf(page, worker, label!.x + label!.width + 4, label!.y + 16);
+    expect(record.features.candidates).toHaveLength(1);
+    expect(record.features.candidates[0]).toMatchObject({ tag: 'label', label: 'Yearly' });
+
+    const box = await page.locator('#plan-box').boundingBox();
+    await clickAt(page, box!.x + box!.width / 2, box!.y + box!.height / 2);
+    const [after] = (await readLog(worker)).records;
+    expect(after!.followUp).toMatchObject({ kind: 'control', candidate: 0 });
+  });
+
+  test('typed text far into a long answer is still blanked where the page repeats it', async ({
+    page,
+    worker,
+  }) => {
+    await page
+      .locator('#answer')
+      .fill(`${'General background information. '.repeat(25)}confidentialsuffix`);
+    await expect(page.locator('#suggest')).toHaveText('Use confidentialsuffix');
+
+    const record = await recordOf(page, worker, 396, 416); // 4 px left of the button
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Use…', redacted: true });
+    expect(JSON.stringify(await readLog(worker))).not.toContain('confidentialsuffix');
+  });
+
+  test('labels are blanked whole when a field is too long to check', async ({ page, worker }) => {
+    await page.locator('#answer').fill(`${'word '.repeat(4100)}tailsecret`);
+    const record = await recordOf(page, worker, 396, 416);
+    expect(record.features.candidates[0]).toMatchObject({ label: '…', redacted: true });
+    expect(JSON.stringify(await readLog(worker))).not.toContain('tailsecret');
+  });
+});
+
 test.describe('closed shadow roots and live components', () => {
+  test('a listening wrapper around a component with its own button is not a control', async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/components.html');
+    // Inside the wrapper, 4 px left of the button in the nested component's shadow root.
+    const record = await recordOf(page, worker, 896, 424);
+    expect(record.features.candidates[0]).toMatchObject({
+      tag: 'button',
+      label: 'Nested go',
+      dist: 4,
+    });
+  });
+
   test('a control known only by its listener inside a closed root is a hit', async ({
     page,
     worker,
@@ -529,9 +676,13 @@ test.describe('typed text in unusual fields', () => {
 
   test('is not confused with the value of a radio button', async ({ page, worker }) => {
     const record = await recordOf(page, worker, 95, 530); // 5 px left of the radio's label
-    const labels = record.features.candidates.map((c) => [c.tag, c.label, c.redacted]);
-    expect(labels).toContainEqual(['label', 'Monthly', false]);
-    expect(labels).toContainEqual(['input', 'Monthly', false]);
+    // The label and its radio button are one target, logged once, by the nearer of the two.
+    expect(record.features.candidates).toHaveLength(1);
+    expect(record.features.candidates[0]).toMatchObject({
+      tag: 'label',
+      label: 'Monthly',
+      redacted: false,
+    });
   });
 
   test('in a rich text box is blanked where the page repeats it', async ({ page, worker }) => {

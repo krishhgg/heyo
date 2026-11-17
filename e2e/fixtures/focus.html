@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: pages that track focus</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      .at {
+        position: absolute;
+      }
+      button {
+        width: 80px;
+        height: 32px;
+        box-sizing: border-box;
+      }
+      /* The menu shows only while its button says it is expanded. */
+      #menu-button[aria-expanded='false'] + #menu {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Row 1: a wrapper that marks itself while focus is inside it. -->
+    <div id="group" class="at" style="left: 100px; top: 100px; width: 200px; height: 40px">
+      <button id="inside" class="at" style="left: 0; top: 4px">Inside</button>
+    </div>
+    <button id="beside" class="at" style="left: 400px; top: 104px">Beside</button>
+
+    <!-- Row 2: a button with a focus class that a window-level handler, set up at page load, takes off. -->
+    <button id="early" class="at" style="left: 100px; top: 204px">Early</button>
+    <button id="near-early" class="at" style="left: 400px; top: 204px">Next</button>
+
+    <!-- Row 3: a menu button that closes its menu when it loses focus. -->
+    <button id="menu-button" class="at" style="left: 100px; top: 304px" aria-expanded="false">
+      Menu
+    </button>
+    <div id="menu" class="at" style="left: 100px; top: 340px">Menu items</div>
+    <button id="near-menu" class="at" style="left: 400px; top: 304px">Other</button>
+
+    <script>
+      const group = document.getElementById('group');
+      group.addEventListener('focusin', () => group.setAttribute('data-focus-within', ''));
+      group.addEventListener('focusout', () => group.removeAttribute('data-focus-within'));
+
+      const early = document.getElementById('early');
+      early.addEventListener('focus', () => early.classList.add('has-focus-ring'));
+      window.addEventListener(
+        'blur',
+        (event) => event.target.classList?.remove('has-focus-ring'),
+        true,
+      );
+
+      const menuButton = document.getElementById('menu-button');
+      menuButton.addEventListener('click', () => menuButton.setAttribute('aria-expanded', 'true'));
+      menuButton.addEventListener('blur', () => menuButton.setAttribute('aria-expanded', 'false'));
+    </script>
+  </body>
+</html>

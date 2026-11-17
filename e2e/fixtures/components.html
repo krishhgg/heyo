@@ -51,7 +51,17 @@
       >Slotted paragraph text here</x-para
     >
 
+    <!-- Right column, lower: a wrapper that listens for clicks around a component with its own button. -->
+    <div
+      id="listening"
+      class="at"
+      style="left: 700px; top: 400px; width: 300px; height: 48px; background: #eee"
+    >
+      <x-inner id="inner-host" style="position: absolute; left: 200px; top: 8px"></x-inner>
+    </div>
+
     <script>
+      document.getElementById('listening').addEventListener('click', () => {});
       const define = (name, mode, html, setup) =>
         customElements.define(
           name,
@@ -96,6 +106,7 @@
         '<span style="display: block; width: 100px; height: 32px">Open panel</span>',
       );
       define('x-para', 'open', '<p style="margin: 0; width: 240px"><slot></slot></p>');
+      define('x-inner', 'open', `<button style="${button}">Nested go</button>`);
     </script>
   </body>
 </html>

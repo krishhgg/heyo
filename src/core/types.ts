@@ -105,6 +105,11 @@ export interface ClickFeatures {
   /** The click point in viewport coordinates. */
   point: Point;
   viewport: { w: number; h: number };
+  /**
+   * Screen px per CSS px, which is the display's scale times the page zoom.
+   * Every distance in the log is in CSS px. At 125% zoom, 12 of them cover 15 on screen.
+   */
+  scale: number;
   /** The click happened in the top frame, not an iframe. */
   topFrame: boolean;
   /** How many nodes on the click's event path, window and document included, have a click-type listener. */

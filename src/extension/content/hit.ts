@@ -4,31 +4,66 @@ import type { HitKind } from '../../core/types';
 import { closestClickable, type Clickable, type HasListener } from './clickable';
 import { flatChildren } from './dom';
 
-/** The text nodes a press on an element can land on: its own, and those slotted into it. */
-function ownTextNodes(target: Element): Node[] {
-  const nodes: Node[] = [];
-  for (const child of flatChildren(target)) {
+/** How deep into inline children the text test looks. */
+const INLINE_DEPTH = 4;
+
+/**
+ * The text nodes that make up an element's lines of text: its own, those
+ * slotted into it, and those inside inline children such as a bold or
+ * highlighted run. A press between two lines goes to the paragraph, whose
+ * text may all sit inside such children. An inline child that is a control,
+ * such as a link, is left out, so the gap beside a link stays empty space.
+ */
+function lineTextNodes(
+  element: Element,
+  hasListener: HasListener,
+  depth = INLINE_DEPTH,
+  nodes: Node[] = [],
+): Node[] {
+  for (const child of flatChildren(element)) {
     if (child.nodeType === Node.TEXT_NODE) nodes.push(child);
-    else if (child instanceof HTMLSlotElement) {
-      nodes.push(...flatChildren(child).filter((node) => node.nodeType === Node.TEXT_NODE));
+    else if (!(child instanceof Element) || depth === 0) continue;
+    else if (child instanceof HTMLSlotElement) lineTextNodes(child, hasListener, depth, nodes);
+    else if (
+      getComputedStyle(child).display === 'inline' &&
+      !closestClickableWithin(child, element, hasListener)
+    ) {
+      lineTextNodes(child, hasListener, depth - 1, nodes);
     }
   }
   return nodes;
 }
 
+/** True when `child`, or something between it and `ancestor`, is a control. */
+function closestClickableWithin(
+  child: Element,
+  ancestor: Element,
+  hasListener: HasListener,
+): boolean {
+  const clickable = closestClickable(child, hasListener);
+  return (
+    clickable !== null && clickable.element !== ancestor && !clickable.element.contains(ancestor)
+  );
+}
+
 /**
- * True when the point is on a line of the target's own text. A click on text
- * is delivered to the element that holds the text node, so only the target's
- * direct text matters. This also works inside shadow roots and for slotted text.
+ * True when the point is on a line of the target's text. A click on text is
+ * delivered to the element that holds it, so only the target's own lines
+ * matter. This also works inside shadow roots and for slotted text.
  *
  * A glyph box is as tall as the font, not the line. The space between two
  * lines of a paragraph belongs to the text, so each box is grown to the line's
  * full height.
  */
-export function isOverText(target: Element, x: number, y: number): boolean {
+export function isOverText(
+  target: Element,
+  x: number,
+  y: number,
+  hasListener: HasListener,
+): boolean {
   const lineHeight = Number.parseFloat(getComputedStyle(target).lineHeight);
   const range = document.createRange();
-  for (const node of ownTextNodes(target)) {
+  for (const node of lineTextNodes(target, hasListener)) {
     range.selectNodeContents(node);
     for (const rect of range.getClientRects()) {
       const grow = Number.isFinite(lineHeight) ? Math.max(0, (lineHeight - rect.height) / 2) : 0;
@@ -63,6 +98,6 @@ export function classifyHit(target: Element, x: number, y: number, hasListener: 
   if (clickable) return { kind: clickable.kind, clickable };
   // A scrollbar is the browser's own control. Count it as an opaque region.
   if (isOnScrollbar(target, x, y)) return { kind: 'opaque', clickable: null };
-  if (isOverText(target, x, y)) return { kind: 'text', clickable: null };
+  if (isOverText(target, x, y, hasListener)) return { kind: 'text', clickable: null };
   return { kind: 'empty', clickable: null };
 }

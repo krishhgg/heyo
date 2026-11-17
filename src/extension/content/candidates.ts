@@ -3,7 +3,7 @@ import type { Rect } from '../../core/geometry';
 import { distanceToRect } from '../../core/geometry';
 import type { Candidate } from '../../core/types';
 import { closestClickable, isDisabled, roleOf, tagOf, type HasListener } from './clickable';
-import { labelOf } from './describe';
+import { labelOf, type Typed } from './describe';
 import { elementAt } from './dom';
 
 /**
@@ -62,6 +62,15 @@ export function boxOf(
   return box ? { rect: roundRect(box.rect), dist: round(box.dist) } : null;
 }
 
+/**
+ * True when two elements are a label and the control it activates. A click on
+ * either does the same thing, so they are one target.
+ */
+export function isLabelPair(a: Element, b: Element): boolean {
+  const controls = (label: Element) => label instanceof HTMLLabelElement && label.control;
+  return controls(a) === b || controls(b) === a;
+}
+
 export interface Found {
   candidates: Candidate[];
   /** The element behind each candidate, in the same order. */
@@ -77,7 +86,7 @@ export function findCandidates(
   x: number,
   y: number,
   hasListener: HasListener,
-  typed: string[],
+  typed: Typed,
 ): Found {
   const seen = new Set<Element>();
   const found = new Map<Element, Candidate>();
@@ -109,8 +118,12 @@ export function findCandidates(
     });
   }
   // Nearest first. Equal distances go top to bottom, then left to right, so the order is stable.
-  const nearest = [...found.entries()]
-    .sort(([, a], [, b]) => a.dist - b.dist || a.rect.y - b.rect.y || a.rect.x - b.rect.x)
+  const sorted = [...found.entries()].sort(
+    ([, a], [, b]) => a.dist - b.dist || a.rect.y - b.rect.y || a.rect.x - b.rect.x,
+  );
+  // A label and its control are one target. Only the nearer of the two is kept.
+  const nearest = sorted
+    .filter(([element], i) => !sorted.slice(0, i).some(([kept]) => isLabelPair(kept, element)))
     .slice(0, MAX_CANDIDATES);
   return {
     candidates: nearest.map(([, candidate], id) => ({ ...candidate, id })),

@@ -34,6 +34,7 @@ export function features(overrides: Partial<ClickFeatures> = {}): ClickFeatures 
     under: { tag: 'div', role: null, label: '' },
     point: { x: 400, y: 300 },
     viewport: { w: 1280, h: 800 },
+    scale: 2,
     topFrame: true,
     listenersOnPath: 0,
     ...overrides,

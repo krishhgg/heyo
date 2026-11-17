@@ -29,8 +29,8 @@ const ECHO_WINDOW = 6;
 const SHORT_VALUE_WORDS = 3;
 
 /** How many fields are checked for typed text, and how much of each. */
-const MAX_FIELDS = 60;
-const MAX_TYPED = 500;
+const MAX_FIELDS = 300;
+const MAX_TYPED = 20_000;
 
 function squash(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -83,13 +83,14 @@ function attribute(element: Element, name: string): string {
  * is never stored. Pages often echo a field into a control, such as a button
  * that reads "Search for ...".
  */
-export function typedText(roots: ShadowRoot[]): string[] {
-  const typed = new Set<string>();
+export function typedText(roots: ShadowRoot[]): Typed {
+  const texts = new Set<string>();
+  let complete = true;
   const add = (value: string) => {
-    const text = squash(value.slice(0, MAX_TYPED * 4))
-      .toLowerCase()
-      .slice(0, MAX_TYPED);
-    if (text.length >= MIN_TYPED) typed.add(text);
+    // Past the limit the check cannot cover the field, and no label can be trusted.
+    if (value.length > MAX_TYPED) complete = false;
+    const text = squash(value.slice(0, MAX_TYPED)).toLowerCase();
+    if (text.length >= MIN_TYPED) texts.add(text);
   };
   const read = (element: Element | null): boolean => {
     if (isTextInput(element)) add(element.value);
@@ -102,13 +103,27 @@ export function typedText(roots: ShadowRoot[]): string[] {
   let fields = 0;
   for (const tree of [document, ...roots]) {
     for (const element of tree.querySelectorAll(FIELD_SELECTOR)) {
-      if (fields >= MAX_FIELDS) break;
+      if (fields >= MAX_FIELDS) {
+        complete = false;
+        break;
+      }
       if (read(element)) fields++;
     }
   }
   // The focused field is read even when it lies past the limit.
   read(deepActiveElement());
-  return [...typed];
+  return { texts: [...texts], complete };
+}
+
+/** What is typed into the page's fields right now. */
+export interface Typed {
+  texts: string[];
+  /**
+   * False when a field was too long to check in full, or there were more
+   * fields than the limit. Labels are then blanked whole, because an echo
+   * could have slipped past the check.
+   */
+  complete: boolean;
 }
 
 export interface Label {
@@ -123,10 +138,11 @@ export interface Label {
  * from a short typed value, such as a first name out of "Ana Lopez". Words out
  * of long typed prose are too ordinary to be an echo.
  */
-function finish(label: string, typed: string[]): Label {
+function finish(label: string, typed: Typed): Label {
+  if (!typed.complete) return { text: label === '' ? '' : '…', redacted: label !== '' };
   const lower = label.toLowerCase();
   const hide = new Array<boolean>(label.length).fill(false);
-  for (const text of typed) {
+  for (const text of typed.texts) {
     const size = Math.min(ECHO_WINDOW, text.length);
     for (let at = 0; at + size <= lower.length; at++) {
       if (text.includes(lower.slice(at, at + size))) hide.fill(true, at, at + size);
@@ -173,7 +189,7 @@ function rawLabel(element: Element): string {
  * A short name for a control. For a field this is its label or placeholder and
  * never what the user typed. A password field is always just "password field".
  */
-export function labelOf(element: Element, typed: string[]): Label {
+export function labelOf(element: Element, typed: Typed): Label {
   if (element instanceof HTMLInputElement && element.type === 'password') {
     return { text: 'password field', redacted: false };
   }
@@ -181,7 +197,7 @@ export function labelOf(element: Element, typed: string[]): Label {
 }
 
 /** What was under the pointer at an empty-space click. */
-export function describeUnder(element: Element, typed: string[]): Under {
+export function describeUnder(element: Element, typed: Typed): Under {
   return {
     tag: tagOf(element),
     role: roleOf(element),

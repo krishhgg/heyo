@@ -108,6 +108,10 @@ function wrapsAControl(element: Element, hasListener: HasListener): boolean {
   const ownPointer = hasPointerCursor(element);
   for (const descendant of descendants) {
     if (hasTabStop(descendant) || hasListener(descendant)) return true;
+    // A component among the descendants keeps its own controls in its shadow root.
+    if (descendant !== element && shadowRootOf(descendant)?.querySelector(INTERACTIVE_SELECTOR)) {
+      return true;
+    }
     // A pointer cursor that starts below the element marks a separate control.
     if (!ownPointer && hasPointerCursor(descendant)) return true;
   }

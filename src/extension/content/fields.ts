@@ -16,11 +16,14 @@ const NON_TEXT_INPUT_TYPES = new Set([
 ]);
 
 /** ARIA roles for an element the user types into, whatever it is built from. */
-const FIELD_ROLES = new Set(['textbox', 'searchbox', 'combobox']);
-export const FIELD_ROLE_SELECTOR = [...FIELD_ROLES].map((role) => `[role~="${role}"]`).join(',');
+const TYPING_ROLES = new Set(['textbox', 'searchbox']);
 
 /** Matches every element that may hold typed text. Check each match with the functions below. */
-export const FIELD_SELECTOR = `input, textarea, [contenteditable], ${FIELD_ROLE_SELECTOR}`;
+export const FIELD_SELECTOR =
+  'input, textarea, [contenteditable], [role~="textbox"], [role~="searchbox"], [role~="combobox"]';
+
+/** Matches an element whose text, when it is a field, is what the user typed. */
+export const FIELD_ROLE_SELECTOR = '[role~="textbox"], [role~="searchbox"]';
 
 /** True for an input or text area whose value is text the user typed. */
 export function isTextInput(element: unknown): element is HTMLInputElement | HTMLTextAreaElement {
@@ -28,16 +31,24 @@ export function isTextInput(element: unknown): element is HTMLInputElement | HTM
   return element instanceof HTMLInputElement && !NON_TEXT_INPUT_TYPES.has(element.type);
 }
 
-/** True for an element whose text content, not a value, is what the user typed. */
+/**
+ * True for an element whose text content, not a value, is what the user typed:
+ * an editable region, or an element with a textbox or searchbox role. A
+ * combobox role alone does not make one. Dropdowns built from a div or a
+ * button carry it too, and what they show is a choice from a list.
+ */
 export function isEditableRegion(element: unknown): element is HTMLElement {
   if (!(element instanceof HTMLElement)) return false;
   const role = element.getAttribute('role')?.trim().split(/\s+/)[0]?.toLowerCase();
-  return element.isContentEditable || FIELD_ROLES.has(role ?? '');
+  return element.isContentEditable || TYPING_ROLES.has(role ?? '');
 }
 
-/** True for an element the user types or picks a value in. */
+/**
+ * True for a field the user types in. A native or custom dropdown is not one.
+ * It commits its value when the user picks, so clicking away commits nothing.
+ */
 export function isTextField(element: unknown): boolean {
-  return isTextInput(element) || element instanceof HTMLSelectElement || isEditableRegion(element);
+  return isTextInput(element) || isEditableRegion(element);
 }
 
 /** The focused element, looking inside shadow roots, open or closed. */

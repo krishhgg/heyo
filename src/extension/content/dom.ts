@@ -44,6 +44,14 @@ export function parentOf(element: Element): Element | null {
   return root instanceof ShadowRoot ? root.host : null;
 }
 
+/** True when `inner` is `outer` or sits inside it in the tree the user sees. */
+export function isWithin(inner: Element, outer: Element): boolean {
+  for (let node: Element | null = inner; node; node = parentOf(node)) {
+    if (node === outer) return true;
+  }
+  return false;
+}
+
 /**
  * The children of a node in the flat tree, the one the user sees. A slot's
  * children are the nodes assigned to it, and a host's children are its shadow

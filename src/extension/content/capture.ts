@@ -6,10 +6,10 @@ import type { ClickFeatures, ClickRecord, FollowUp, PathSample } from '../../cor
 import { decide } from '../../decision';
 import type { WorkerMessage } from '../messages';
 import { decisionVersion } from '../version';
-import { boxOf, findCandidates, type Found } from './candidates';
+import { boxOf, findCandidates, isLabelPair, type Found } from './candidates';
 import { isDisabled, tagOf, type HasListener } from './clickable';
 import { describeUnder, labelOf, typedText } from './describe';
-import { allShadowRoots, deepestAt } from './dom';
+import { allShadowRoots, deepestAt, isWithin } from './dom';
 import { classifyHit, type Hit } from './hit';
 import { hasListener } from './listeners';
 import { BackgroundWatch, reacted, ReactionWatch } from './reaction';
@@ -217,7 +217,10 @@ export function startCapture(): void {
     const { elements, candidates } = first.found;
     const exact = elements.indexOf(element);
     if (exact >= 0) return exact;
-    const related = elements.findIndex((e) => e.contains(element) || element.contains(e));
+    // A label and its control are one target. So are a control and what it wraps.
+    const paired = elements.findIndex((e) => isLabelPair(e, element));
+    if (paired >= 0) return paired;
+    const related = elements.findIndex((e) => isWithin(element, e) || isWithin(e, element));
     if (related >= 0) return related;
     if (hasShifted(first)) return null;
     const box = boxOf(element, target, first.x, first.y);
@@ -306,6 +309,7 @@ export function startCapture(): void {
           under: describeUnder(target, typed),
           point: { x: round(at.x), y: round(at.y) },
           viewport: { w: window.innerWidth, h: window.innerHeight },
+          scale: window.devicePixelRatio,
           topFrame: window === window.top,
           listenersOnPath: path.filter(lookup).length,
         },

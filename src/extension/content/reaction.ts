@@ -10,7 +10,39 @@ interface NavigationLike {
   removeEventListener(type: 'navigate', listener: () => void): void;
 }
 
-const EVERYTHING = { subtree: true, childList: true, attributes: true, characterData: true };
+const EVERYTHING = {
+  subtree: true,
+  childList: true,
+  attributes: true,
+  attributeOldValue: true,
+  characterData: true,
+};
+
+/** True for an attribute record whose attribute holds the same value as before. */
+function isUnchanged(record: MutationRecord): boolean {
+  const name = record.attributeName;
+  if (record.type !== 'attributes' || !name || !(record.target instanceof Element)) return false;
+  return record.target.getAttribute(name) === record.oldValue;
+}
+
+/** A class or attribute name that only says where focus is. */
+const FOCUS_WORD = /focus/i;
+
+/**
+ * True for an attribute change that only mirrors focus: an attribute named for
+ * focus, such as data-focused or data-focus-within, or a class change whose
+ * added and removed names are all about focus, such as cdk-focused. A change
+ * to aria-expanded or to any other class is not one.
+ */
+function isFocusMarker(record: MutationRecord): boolean {
+  const name = record.attributeName;
+  if (record.type !== 'attributes' || !name || !(record.target instanceof Element)) return false;
+  if (name !== 'class') return FOCUS_WORD.test(name);
+  const before = new Set((record.oldValue ?? '').split(/\s+/).filter(Boolean));
+  const after = new Set(record.target.classList);
+  const changed = [...before, ...after].filter((token) => before.has(token) !== after.has(token));
+  return changed.length > 0 && changed.every((token) => FOCUS_WORD.test(token));
+}
 
 /** How many DOM changes are checked for being near the click. */
 const NEAR_CHECK_LIMIT = 500;
@@ -46,32 +78,23 @@ export class ReactionWatch {
   // Focus arriving anywhere else, or leaving a field the user types in, is.
   // Leaving a field is checked at the end by comparing the focused element,
   // because a focus event from inside a closed shadow root names only the host.
-  //
-  // These listen for focus and blur in the capture phase, which run before the
-  // page's own handlers on the element. focusin and focusout come after them,
-  // too late to know which element a handler's DOM change belongs to.
   private readonly onFocus = (event: FocusEvent) => {
     const target = event.composedPath()[0];
     if (target === window) return;
-    if (!isTextField(target) && target && this.path.includes(target)) {
-      this.blurred = true;
-      this.refocused.add(target);
-    } else {
-      this.seen.focus = true;
-    }
+    if (!isTextField(target) && target && this.path.includes(target)) this.blurred = true;
+    else this.seen.focus = true;
   };
   private readonly onBlur = (event: FocusEvent) => {
-    const target = event.composedPath()[0];
-    if (!target || target === window) return;
-    this.blurred = true;
-    this.refocused.add(target);
+    if (event.composedPath()[0] !== window) this.blurred = true;
   };
   /**
-   * Elements whose focus Chrome moved on its own. Focus-tracking libraries
-   * mirror focus into a class or attribute on the element, and that change is
-   * no more a reaction than the focus move itself.
+   * Attribute changes seen so far that only mirror focus. Focus-tracking code
+   * marks the focused element, or a wrapper around it, with a class or an
+   * attribute. When Chrome moved focus on its own, those changes are no more a
+   * reaction than the focus move was. They are judged when the watch stops,
+   * because a page handler can run before this watch hears of the focus move.
    */
-  private readonly refocused = new Set<EventTarget>();
+  private focusMarks = 0;
   private readonly onScroll = () => {
     this.seen.scroll = true;
   };
@@ -107,8 +130,15 @@ export class ReactionWatch {
   }
 
   private count(records: MutationRecord[]): void {
-    for (const { target, type } of records) {
-      if (type === 'attributes' && this.refocused.has(target)) continue;
+    for (const record of records) {
+      // Code often writes an attribute back with the value it already had, such
+      // as removing a class that was not there. Nothing changed, so it is skipped.
+      if (isUnchanged(record)) continue;
+      if (isFocusMarker(record)) {
+        this.focusMarks++;
+        continue;
+      }
+      const { target } = record;
       this.seen.mutation = true;
       this.total++;
       // Past the limit only the total is kept, to bound the work on a page that changes a lot.
@@ -135,6 +165,11 @@ export class ReactionWatch {
       const rest = this.observer.takeRecords();
       if (rest.length > 0) this.count(rest);
       this.observer.disconnect();
+      // Focus marks count as a reaction only when focus did not move by Chrome's own doing.
+      if (this.focusMarks > 0 && !this.blurred) {
+        this.seen.mutation = true;
+        this.total += this.focusMarks;
+      }
       window.removeEventListener('focus', this.onFocus, true);
       window.removeEventListener('blur', this.onBlur, true);
       window.removeEventListener('scroll', this.onScroll, true);
@@ -196,8 +231,12 @@ export class BackgroundWatch {
     if (this.watchingSince !== null) return;
     this.watchingSince = now;
     this.observer.observe(document, EVERYTHING);
-    // A ticker inside a web component changes only its shadow root.
-    for (const root of allShadowRoots()) this.observer.observe(root, EVERYTHING);
+    // A ticker inside a web component changes only its shadow root. Finding the
+    // roots takes a moment, so it waits until this pointer move has been handled.
+    window.setTimeout(() => {
+      if (this.watchingSince === null) return;
+      for (const root of allShadowRoots()) this.observer.observe(root, EVERYTHING);
+    }, 0);
     window.setTimeout(this.rest, IDLE_MS);
   }
 
