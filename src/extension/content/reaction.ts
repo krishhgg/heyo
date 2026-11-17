@@ -46,14 +46,32 @@ export class ReactionWatch {
   // Focus arriving anywhere else, or leaving a field the user types in, is.
   // Leaving a field is checked at the end by comparing the focused element,
   // because a focus event from inside a closed shadow root names only the host.
-  private readonly onFocusIn = (event: FocusEvent) => {
+  //
+  // These listen for focus and blur in the capture phase, which run before the
+  // page's own handlers on the element. focusin and focusout come after them,
+  // too late to know which element a handler's DOM change belongs to.
+  private readonly onFocus = (event: FocusEvent) => {
     const target = event.composedPath()[0];
-    if (!isTextField(target) && target && this.path.includes(target)) this.blurred = true;
-    else this.seen.focus = true;
+    if (target === window) return;
+    if (!isTextField(target) && target && this.path.includes(target)) {
+      this.blurred = true;
+      this.refocused.add(target);
+    } else {
+      this.seen.focus = true;
+    }
   };
-  private readonly onFocusOut = () => {
+  private readonly onBlur = (event: FocusEvent) => {
+    const target = event.composedPath()[0];
+    if (!target || target === window) return;
     this.blurred = true;
+    this.refocused.add(target);
   };
+  /**
+   * Elements whose focus Chrome moved on its own. Focus-tracking libraries
+   * mirror focus into a class or attribute on the element, and that change is
+   * no more a reaction than the focus move itself.
+   */
+  private readonly refocused = new Set<EventTarget>();
   private readonly onScroll = () => {
     this.seen.scroll = true;
   };
@@ -80,8 +98,8 @@ export class ReactionWatch {
       this.observer.observe(root, EVERYTHING);
       root.addEventListener('scroll', this.onScroll, true);
     }
-    window.addEventListener('focusin', this.onFocusIn, true);
-    window.addEventListener('focusout', this.onFocusOut, true);
+    window.addEventListener('focus', this.onFocus, true);
+    window.addEventListener('blur', this.onBlur, true);
     window.addEventListener('scroll', this.onScroll, true);
     window.addEventListener('hashchange', this.onNavigate, true);
     window.addEventListener('popstate', this.onNavigate, true);
@@ -89,8 +107,9 @@ export class ReactionWatch {
   }
 
   private count(records: MutationRecord[]): void {
-    this.seen.mutation = true;
-    for (const { target } of records) {
+    for (const { target, type } of records) {
+      if (type === 'attributes' && this.refocused.has(target)) continue;
+      this.seen.mutation = true;
       this.total++;
       // Past the limit only the total is kept, to bound the work on a page that changes a lot.
       if (this.total > NEAR_CHECK_LIMIT) continue;
@@ -116,8 +135,8 @@ export class ReactionWatch {
       const rest = this.observer.takeRecords();
       if (rest.length > 0) this.count(rest);
       this.observer.disconnect();
-      window.removeEventListener('focusin', this.onFocusIn, true);
-      window.removeEventListener('focusout', this.onFocusOut, true);
+      window.removeEventListener('focus', this.onFocus, true);
+      window.removeEventListener('blur', this.onBlur, true);
       window.removeEventListener('scroll', this.onScroll, true);
       window.removeEventListener('hashchange', this.onNavigate, true);
       window.removeEventListener('popstate', this.onNavigate, true);

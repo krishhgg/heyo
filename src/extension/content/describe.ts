@@ -4,6 +4,7 @@
 // is typed into a field on the page right now.
 import type { Under } from '../../core/types';
 import { roleOf, tagOf } from './clickable';
+import { flatChildren } from './dom';
 import {
   deepActiveElement,
   FIELD_ROLE_SELECTOR,
@@ -24,6 +25,9 @@ const MIN_TYPED = 3;
 /** A run of this many characters shared with typed text is treated as an echo of it. */
 const ECHO_WINDOW = 6;
 
+/** A typed value of at most this many words is short enough for its single words to count as echoes. */
+const SHORT_VALUE_WORDS = 3;
+
 /** How many fields are checked for typed text, and how much of each. */
 const MAX_FIELDS = 60;
 const MAX_TYPED = 500;
@@ -43,22 +47,30 @@ function isUserText(node: Node): boolean {
   return getComputedStyle(parent).cursor === 'text';
 }
 
-/** The first page-authored text under a node, read only as far as the label needs. */
-function pageText(root: Node, deep: boolean): string {
-  let text = '';
-  if (deep) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    while (text.length < LABEL_MAX * 2 && walker.nextNode()) {
-      if (!isUserText(walker.currentNode)) text += `${walker.currentNode.nodeValue ?? ''} `;
-    }
-  } else {
-    for (const child of root.childNodes) {
-      if (child.nodeType === Node.TEXT_NODE && !isUserText(child)) {
-        text += `${child.nodeValue ?? ''} `;
-      }
+/** Elements whose text is code or styling, never a label. */
+const SILENT_TAGS = new Set(['style', 'script', 'template', 'noscript']);
+
+/** Appends page-authored text under a node, in the order the user sees it, until there is enough. */
+function collectText(node: Node, deep: boolean, out: string[]): void {
+  for (const child of flatChildren(node)) {
+    if (out.join('').length >= LABEL_MAX * 2) return;
+    if (child.nodeType === Node.TEXT_NODE) {
+      if (!isUserText(child)) out.push(`${child.nodeValue ?? ''} `);
+    } else if (deep && child instanceof Element && !SILENT_TAGS.has(tagOf(child))) {
+      collectText(child, deep, out);
     }
   }
-  return squash(text);
+}
+
+/**
+ * The first page-authored text under a node, read only as far as the label
+ * needs. It follows the tree the user sees, so text slotted into a web
+ * component or kept in its shadow root is found.
+ */
+function pageText(root: Node, deep: boolean): string {
+  const out: string[] = [];
+  collectText(root, deep, out);
+  return squash(out.join(''));
 }
 
 function attribute(element: Element, name: string): string {
@@ -105,7 +117,12 @@ export interface Label {
   redacted: boolean;
 }
 
-/** Blanks any run a label shares with typed text, then cuts the label to length. */
+/**
+ * Blanks what a label shares with typed text, then cuts the label to length.
+ * Any run of 6 characters counts. So does a whole word of 3 or more characters
+ * from a short typed value, such as a first name out of "Ana Lopez". Words out
+ * of long typed prose are too ordinary to be an echo.
+ */
 function finish(label: string, typed: string[]): Label {
   const lower = label.toLowerCase();
   const hide = new Array<boolean>(label.length).fill(false);
@@ -113,6 +130,11 @@ function finish(label: string, typed: string[]): Label {
     const size = Math.min(ECHO_WINDOW, text.length);
     for (let at = 0; at + size <= lower.length; at++) {
       if (text.includes(lower.slice(at, at + size))) hide.fill(true, at, at + size);
+    }
+    const words = text.split(/[^\p{L}\p{N}]+/u).filter((word) => word.length >= MIN_TYPED);
+    if (words.length === 0 || words.length > SHORT_VALUE_WORDS) continue;
+    for (const match of lower.matchAll(/[\p{L}\p{N}]+/gu)) {
+      if (words.includes(match[0])) hide.fill(true, match.index, match.index + match[0].length);
     }
   }
   if (!hide.includes(true)) return { text: label.slice(0, LABEL_MAX), redacted: false };

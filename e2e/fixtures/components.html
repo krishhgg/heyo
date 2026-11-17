@@ -44,6 +44,13 @@
     <!-- Row 5: a button inside a closed shadow root. -->
     <x-closed id="closed" class="at" style="left: 100px; top: 580px"></x-closed>
 
+    <!-- Right column: components whose text is slotted in or kept in their shadow root. -->
+    <x-btn id="slot-button" class="at" style="left: 700px; top: 100px">Save draft</x-btn>
+    <x-chip id="chip" class="at" role="button" style="left: 700px; top: 200px"></x-chip>
+    <x-para id="slot-para" class="at" style="left: 700px; top: 300px"
+      >Slotted paragraph text here</x-para
+    >
+
     <script>
       const define = (name, mode, html, setup) =>
         customElements.define(
@@ -82,6 +89,13 @@
           '<a href="#shadow-link" style="position: absolute; left: 240px; top: 0; white-space: nowrap">Shadow link</a>',
       );
       define('x-closed', 'closed', `<button style="${button}">Closed</button>`);
+      define('x-btn', 'open', `<button style="${button}; width: 100px"><slot></slot></button>`);
+      define(
+        'x-chip',
+        'open',
+        '<span style="display: block; width: 100px; height: 32px">Open panel</span>',
+      );
+      define('x-para', 'open', '<p style="margin: 0; width: 240px"><slot></slot></p>');
     </script>
   </body>
 </html>

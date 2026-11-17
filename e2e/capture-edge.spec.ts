@@ -60,6 +60,54 @@ test.describe('web components', () => {
   });
 });
 
+test.describe('text', () => {
+  test('the space between two lines of a paragraph is text, not empty space', async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/text.html');
+    // Find the gap under the first line: 2 px below the letters, well left of the link.
+    const gap = await page.evaluate(() => {
+      const range = document.createRange();
+      range.selectNodeContents(document.getElementById('para')!.firstChild!);
+      const [line] = range.getClientRects();
+      return { x: line!.left + 40, y: line!.bottom + 2, lineHeight: 25.6, letters: line!.height };
+    });
+    expect(gap.letters).toBeLessThan(gap.lineHeight - 4);
+
+    await clickAt(page, gap.x, gap.y);
+    const log = await readLog(worker);
+    expect(log.records).toEqual([]);
+    expect(log.counts[0]).toMatchObject({ clicks: 1, hits: 1, emptyIgnored: 0 });
+  });
+
+  test('text slotted into a web component is text', async ({ page, worker }) => {
+    await page.goto('/components.html');
+    await clickAt(page, 740, 309);
+    const log = await readLog(worker);
+    expect(log.records).toEqual([]);
+    expect(log.counts[0]).toMatchObject({ clicks: 1, hits: 1 });
+  });
+
+  test('a button is named by text slotted into it or kept in its shadow root', async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/components.html');
+    await page.mouse.click(1100, 700); // closes this page's menu, so later clicks get no reaction
+    const slotted = await recordOf(page, worker, 804, 116); // 4 px right of the 100 px button
+    expect(slotted.features.candidates[0]).toMatchObject({
+      tag: 'button',
+      label: 'Save draft',
+      dist: 4,
+    });
+    expect(slotted.decision).toEqual({ action: 'retarget', candidate: 0 });
+
+    const host = await recordOf(page, worker, 804, 216);
+    expect(host.features.candidates[0]).toMatchObject({ role: 'button', label: 'Open panel' });
+  });
+});
+
 test.describe('closed shadow roots and live components', () => {
   test('a control known only by its listener inside a closed root is a hit', async ({
     page,
@@ -175,6 +223,36 @@ test.describe('tricky pages', () => {
     expect(record.features.candidates[0]).toMatchObject({ label: 'Cancel', dist: 4 });
     expect(record.features).toMatchObject({ reacted: false, blurred: true });
     expect(record.decision).toEqual({ action: 'retarget', candidate: 0 });
+  });
+
+  test('a page that mirrors focus into a class has not reacted when Chrome moves focus', async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/tricky.html');
+    await clickAt(page, 840, 126); // First, which takes focus and gets the class
+    await expect(page.locator('#first')).toHaveClass(/is-focused/);
+
+    const record = await recordOf(page, worker, 996, 126); // 4 px left of Second
+    await expect(page.locator('#first')).not.toHaveClass(/is-focused/);
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Second', dist: 4 });
+    expect(record.features).toMatchObject({
+      reacted: false,
+      blurred: true,
+      mutations: { total: 0, near: 0 },
+    });
+  });
+
+  test('a press on a control the page removes at once is counted as a hit', async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/tricky.html');
+    await clickAt(page, 840, 276);
+    await expect(page.locator('#vanish')).toHaveCount(0);
+    const log = await readLog(worker);
+    expect(log.records).toEqual([]);
+    expect(log.counts[0]).toMatchObject({ clicks: 1, hits: 1 });
   });
 
   test('a link with no box of its own is still a candidate', async ({ page, worker }) => {
@@ -433,6 +511,20 @@ test.describe('typed text in unusual fields', () => {
     const record = await recordOf(page, worker, 396, 116);
     expect(record.features.candidates[0]).toMatchObject({ label: 'Search for …', redacted: true });
     expect(JSON.stringify(await readLog(worker))).not.toContain('hunter2');
+  });
+
+  test('is blanked when the page repeats one short word of it, such as a first name', async ({
+    page,
+    worker,
+  }) => {
+    await page.locator('#name').fill('Ana Lopez');
+    await expect(page.locator('#greet')).toHaveText('Continue as Ana');
+
+    const record = await recordOf(page, worker, 396, 636);
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Continue as …', redacted: true });
+    const exported = JSON.stringify(await readLog(worker));
+    expect(exported).not.toContain('Ana');
+    expect(exported).not.toContain('Lopez');
   });
 
   test('is not confused with the value of a radio button', async ({ page, worker }) => {

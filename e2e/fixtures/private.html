@@ -77,7 +77,16 @@
     <div id="title" class="rich at" style="left: 400px; top: 520px" contenteditable="true"></div>
     <button id="title-echo" class="at" style="left: 700px; top: 520px">Rename to nothing</button>
 
+    <!-- Row 6: a name field, and a button that greets by first name. -->
+    <input id="name" class="at" style="left: 100px; top: 620px" type="text" />
+    <button id="greet" class="at" style="left: 400px; top: 620px">Continue as guest</button>
+
     <script>
+      const nameField = document.getElementById('name');
+      nameField.addEventListener('input', () => {
+        document.getElementById('greet').textContent =
+          `Continue as ${nameField.value.split(' ')[0]}`;
+      });
       document.getElementById('hidden-inputs').innerHTML =
         '<input type="hidden" value="token" />'.repeat(70);
       const title = document.getElementById('title');

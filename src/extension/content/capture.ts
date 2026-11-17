@@ -333,9 +333,10 @@ export function startCapture(): void {
     if (!event.isTrusted || event.button !== 0 || !press || press.up !== null) return;
     press.up = event.timeStamp;
     press.move = Math.max(press.move, Math.hypot(event.clientX - press.x, event.clientY - press.y));
-    // Chrome sends no click for a press on a disabled control. Count the press here.
+    // Chrome sends no click for a press on a disabled control, or on one the
+    // page removed during the press, as some menus do. Count the press here.
     const control = press.hit.clickable?.element;
-    if (press.hit.kind === 'control' && control && isDisabled(control)) {
+    if (press.hit.kind === 'control' && control && (isDisabled(control) || !control.isConnected)) {
       send({ type: 'count', site, field: 'hits' });
       press = null;
       return;

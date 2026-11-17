@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: body text</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+      }
+      /* Body text the way articles set it: lines taller than the letters. */
+      p {
+        position: absolute;
+        left: 100px;
+        top: 100px;
+        width: 320px;
+        margin: 0;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <p id="para">
+      Forgiving clicks send a near miss to the control you aimed for. This paragraph wraps over
+      several lines and has <a id="inline" href="#inline">a link in the middle</a> of its running
+      text, with more words after it.
+    </p>
+  </body>
+</html>

@@ -44,6 +44,20 @@ export function parentOf(element: Element): Element | null {
   return root instanceof ShadowRoot ? root.host : null;
 }
 
+/**
+ * The children of a node in the flat tree, the one the user sees. A slot's
+ * children are the nodes assigned to it, and a host's children are its shadow
+ * root's.
+ */
+export function flatChildren(node: Node): Node[] {
+  if (node instanceof HTMLSlotElement) {
+    const assigned = node.assignedNodes({ flatten: true });
+    if (assigned.length > 0) return assigned;
+  }
+  const root = node instanceof Element ? shadowRootOf(node) : null;
+  return [...(root ?? node).childNodes];
+}
+
 /** Follows shadow roots down from an element to the deepest element at a point. */
 export function deepestAt(start: Element, x: number, y: number): Element {
   let element = start;
