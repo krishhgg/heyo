@@ -22,7 +22,9 @@ async function click(page, x, y) {
 export async function drive({ page, context, worker, baseUrl, evidence, log }) {
   await page.goto(`${baseUrl}/app.html`);
 
-  // Three misses that are retried, and one empty-space click that is not.
+  // Three misses that are retried, and one empty-space click that is not. The
+  // miss above Starred has Inbox 11 px away on its other side, which is under
+  // four times the 3 px to Starred, so the decision refuses it as ambiguous.
   for (const name of ['Search', 'Compose', 'Starred']) {
     const control = page
       .getByRole('button', { name, exact: true })
@@ -69,7 +71,17 @@ export async function drive({ page, context, worker, baseUrl, evidence, log }) {
   await writeFile(join(evidence, 'result.json'), `${JSON.stringify(score, null, 2)}\n`);
   assert.equal(score.records, 4, 'four empty-space clicks were logged');
   assert.equal(score.misses, 3, 'the three retried clicks are labeled misses');
-  assert.equal(score.recovered, 3, 'the decision picked the control the user then clicked');
+  assert.equal(
+    score.recovered,
+    2,
+    'the decision picked Search and Compose, which the user then clicked',
+  );
+  assert.equal(
+    score.proxyWrong,
+    0,
+    'the miss between Inbox and Starred was refused, not sent elsewhere',
+  );
+  assert.equal(score.fires, 3, 'Search, Compose and the click above Settings would fire');
   assert.equal(score.fires, marked, 'the scorer and the review page agree on the fires');
   assert.equal(score.reviewed, marked, 'every review mark made in the browser reached the scorer');
   assert.equal(score.wrong, 0);

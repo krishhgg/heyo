@@ -35,3 +35,7 @@ Each feature file starts with an H1 title and one paragraph on the user-visible 
 - [Agent loop](./agent-loop.md) covers the loop's workspace, keep-or-undo, the decision lint, the sandbox and the held-out judgment.
 - [Retargeting](./retargeting.md) covers the gate-locked switch, sending a click on, the allowlist, held fires, wrong-click reports and the real-site replay tests.
 - [Mac feasibility experiment](./mac-experiment.md) covers the Swift package's tests, its permission check and how to run the experiment.
+
+## When the decision changes
+
+The drives are not part of CI, and several of them count on the decision acting on a near miss. After any change to `src/decision`, run every drive: `extension-loads`, `shadow-capture`, `review-flow`, `scorer`, `agent-loop` and `retargeting`. A near miss in a drive is one the decision acts on only if the control is within 7.5 px and no other control is nearer than four times that distance or less than 8 px farther. On `app.html`, the clicks above Starred and Archive are refused, because the link above each is too close.

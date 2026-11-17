@@ -18,8 +18,11 @@ async function click(page, x, y) {
 export async function drive({ page, context, worker, baseUrl, evidence, log }) {
   await page.goto(`${baseUrl}/app.html`);
 
-  // Click 3 px outside each of five controls on the small app fixture.
-  const names = ['Search', 'Settings', 'Compose', 'Starred', 'Archive'];
+  // Click 3 px outside each of six controls on the small app fixture. The
+  // decision would act on the first four. Starred and Archive each have another
+  // link too close on the far side, and those two clicks are refused.
+  const names = ['Search', 'Refresh', 'Settings', 'Compose', 'Starred', 'Archive'];
+  const fires = 4;
   for (const name of names) {
     const control = page
       .getByRole('button', { name, exact: true })
@@ -84,6 +87,8 @@ export async function drive({ page, context, worker, baseUrl, evidence, log }) {
 
   assert.equal(exported.format, 'heyo-log');
   assert.equal(exported.records.length, names.length);
+  const acted = exported.records.filter((r) => r.decision.action === 'retarget').length;
+  assert.equal(acted, fires, 'the review page had four would-be fires to show');
   assert.deepEqual(exported.records, stored.records, 'the export holds what the extension stored');
   assert.deepEqual(exported.reviews, stored.reviews, 'the export holds the marks as stored');
 

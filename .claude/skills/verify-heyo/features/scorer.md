@@ -21,7 +21,7 @@ Preconditions:
 
 - `npm run build` has run.
 
-- **From the browser to the scorer.** Run `npm run verify -- run scorer`. The drive misses three controls on `app.html` and retries each, makes one more empty-space click, marks every would-be fire right in the review page, exports the log, and runs `scorer/cli.mjs score` on the downloaded file. The transcript shows the scorer's report, then `PASS scorer`. The drive asserts 4 records, 3 labeled misses, 3 recovered and no wrong fires.
+- **From the browser to the scorer.** Run `npm run verify -- run scorer`. The drive misses three controls on `app.html` and retries each, makes one more empty-space click, marks every would-be fire right in the review page, exports the log, and runs `scorer/cli.mjs score` on the downloaded file. The transcript shows the scorer's report, then `PASS scorer`. The drive asserts 4 records, 3 labeled misses, 2 recovered and no wrong fires. The third miss, above Starred, has Inbox too close on its other side, and the decision refuses it as ambiguous.
 - **Proof.** `export.json` is the downloaded log. `score.txt` is the scorer's report on it and `result.json` the same numbers as JSON.
 - **Gates on synthetic data.** Run `npm run synth -- --out .verify/synth.json` then `npm run gates -- .verify/synth.json`. The report ends with `Both retargeting gates pass.` or `Retargeting stays off. A gate did not pass.`, and the exit code matches.
 - **Other cases.** `npx vitest run scorer synth` covers the split, a decision that tries to read files or open a connection, a decision that picks a control that was not logged, and the generator.
