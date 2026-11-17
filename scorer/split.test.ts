@@ -45,3 +45,13 @@ describe('splitter', () => {
     expect(test).toBeLessThan(70);
   });
 });
+
+describe('a very large log', () => {
+  it('is split without running out of call arguments', () => {
+    // More records than a single call can take as arguments.
+    const many = Array.from({ length: 200_000 }, (_, i) => at(i % 10, `site-${i % 50}.example`));
+    const split = splitter(many);
+    expect(split.weeks).toBe(10);
+    expect(split.of(many.at(-1)!)).toBe('test');
+  });
+});

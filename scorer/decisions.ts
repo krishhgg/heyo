@@ -1,5 +1,6 @@
 // Gets a decision module's answers for a list of clicks, from a locked-down child process.
 import { spawn } from 'node:child_process';
+import { createServer, type AddressInfo } from 'node:net';
 import type { ClickFeatures, Decision } from '../src/core/types';
 
 /** How long a decision module may take over a whole log. */
@@ -16,11 +17,54 @@ function isDecision(value: unknown, features: ClickFeatures): value is Decision 
 }
 
 /**
+ * Starts a Node process with the given flags and has it try to reach a local
+ * server. Resolves true when it got through.
+ */
+export function reachesNetwork(flags: string[]): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const server = createServer((socket) => socket.end()).listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as AddressInfo;
+      // The probe exits with 7 only when it got through to the server.
+      const probe = `const s = require('node:net').connect(${port}, '127.0.0.1');
+        s.on('connect', () => process.exit(7));
+        s.on('error', () => process.exit(0));`;
+      const child = spawn(process.execPath, [...flags, '-e', probe], { stdio: 'ignore' });
+      child.on('error', reject);
+      child.on('close', (code) => {
+        server.close();
+        resolve(code === 7);
+      });
+    });
+    server.on('error', reject);
+  });
+}
+
+let networkLocked: Promise<void> | null = null;
+
+/**
+ * Checks, once, that this Node keeps a locked-down process off the network.
+ * Older versions of Node's permission system cover files and processes but not
+ * sockets. A decision there could send click features out or ask a service
+ * what to answer, so the scorer refuses to run on them.
+ */
+function assertNetworkLocked(): Promise<void> {
+  networkLocked ??= reachesNetwork(['--permission']).then((reached) => {
+    if (reached) {
+      throw new Error(
+        `Node ${process.version} does not keep a decision off the network. Use Node 26 or later.`,
+      );
+    }
+  });
+  return networkLocked;
+}
+
+/**
  * Runs the bundled worker over every click's features and returns one decision
  * per click, in order. The child process gets Node's permission system with
  * read access to its own bundle and nothing else.
  */
-export function decideAll(workerBundle: string, all: ClickFeatures[]): Promise<Decision[]> {
+export async function decideAll(workerBundle: string, all: ClickFeatures[]): Promise<Decision[]> {
+  await assertNetworkLocked();
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,

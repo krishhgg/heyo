@@ -1,6 +1,6 @@
 # Scoring a log
 
-The offline scorer runs a decision module over an exported log and reports the numbers the plan steers by. It needs Node 22 or later and `npm ci`.
+The offline scorer runs a decision module over an exported log and reports the numbers the plan steers by. It needs Node 26 or later and `npm ci`. Earlier versions of Node cannot keep a locked-down process off the network, and the scorer checks for that and refuses to run on them.
 
 ## Get a log
 

@@ -134,6 +134,7 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 
 - The scorer runs the decision in a child process under Node's permission system, with read access to its own bundle only. It is sent click features and nothing else. That enforces by construction what the plan asks the lint to enforce by inspection.
 - The scorer always uses the repo's own `src/core`, also for a decision in another folder with its own copy beside it.
+- The repo needs Node 26. Node's permission system covers the network only in recent versions, and on an older one a decision could open a socket. The scorer tests that with a probe process before it runs a decision, and refuses to run if the probe gets through.
 - The bundler refuses any import a decision makes other than its own `.ts` files and `src/core`. The permission system only guards the running process, and an imported log file would be read at bundle time, before it starts.
 - A decision that returns an unknown candidate, an opaque region or a malformed answer fails the run. A silent fallback to "refuse" would hide a broken rule.
 - The held-out split is a fixed quarter of the sites, by a hash of the site name, plus the last 30% of the weeks. Holding out the latest weeks matches how the decision will be used, on clicks made after it was tuned.

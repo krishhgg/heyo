@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { LogExport } from '../src/core/types';
 import { DEFAULT_OPTIONS, generate } from '../synth/generate';
+import { reachesNetwork } from './decisions';
 
 const run = promisify(execFile);
 const cli = fileURLToPath(new URL('./cli.mjs', import.meta.url));
@@ -124,6 +125,13 @@ describe('several exports scored together', () => {
     const alone = await clicksOf(logFile);
     expect(await clicksOf(olderFile, logFile)).toBe(alone);
     expect(await clicksOf(logFile, olderFile)).toBe(alone);
+  });
+});
+
+describe('the check that a locked-down process is off the network', () => {
+  it('sees a process with no lock reach a local server, and one with the lock fail to', async () => {
+    expect(await reachesNetwork([])).toBe(true);
+    expect(await reachesNetwork(['--permission'])).toBe(false);
   });
 });
 

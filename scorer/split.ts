@@ -39,8 +39,13 @@ export interface Splitter {
  * held-out week. Train is everything else: the other sites in the earlier weeks.
  */
 export function splitter(records: ClickRecord[]): Splitter {
-  const first = Math.min(...records.map((r) => r.t));
-  const last = Math.max(...records.map((r) => r.t));
+  // A loop, not Math.min over a spread: a log can hold more records than a call takes arguments.
+  let first = Infinity;
+  let last = -Infinity;
+  for (const record of records) {
+    if (record.t < first) first = record.t;
+    if (record.t > last) last = record.t;
+  }
   const weeks = records.length > 0 ? Math.floor((last - first) / WEEK_MS) + 1 : 0;
   // With a single week there is no later week to hold out, so only sites split.
   const testWeeks = weeks >= 2 ? Math.max(1, Math.round(weeks * TEST_WEEK_SHARE)) : 0;
