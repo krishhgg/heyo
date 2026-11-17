@@ -54,9 +54,16 @@ export function decisionPlugin(decisionDir) {
   return {
     name: 'heyo-decision',
     setup(esbuild) {
-      esbuild.onResolve({ filter: /^heyo-decision$/ }, () => ({
-        path: join(folder, 'index.ts'),
-      }));
+      esbuild.onResolve({ filter: /^heyo-decision$/ }, () => {
+        const entry = join(folder, 'index.ts');
+        // The same rule as for the files it imports: no link out of the folder.
+        if (existsSync(entry) && inFolder(realpathSync(entry))) return { path: entry };
+        return {
+          errors: [
+            { text: `A decision needs its own index.ts, in ${folder} and not a link out of it.` },
+          ],
+        };
+      });
       esbuild.onResolve({ filter: /.*/ }, (args) => {
         if (!inFolder(args.importer)) return undefined;
         if (/^\.\.\/core\/[\w-]+(\.ts)?$/.test(args.path)) {

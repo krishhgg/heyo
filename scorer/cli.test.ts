@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -207,6 +207,20 @@ describe('a decision under the scorer', () => {
     const { code, stderr } = await scorer('score', logFile, '--decision', folder);
     expect(code).toBe(2);
     expect(stderr).toContain('A decision may import only its own .ts files');
+  });
+
+  it('cannot be a link to a file outside its folder', async () => {
+    const folder = await decisionDir('linked', '');
+    const outside = join(dirname(folder), 'outside.ts');
+    await writeFile(
+      outside,
+      `export const decide = () => ({ action: 'refuse', reason: 'too-far' });`,
+    );
+    await rm(join(folder, 'index.ts'));
+    await symlink(outside, join(folder, 'index.ts'));
+    const { code, stderr } = await scorer('score', logFile, '--decision', folder);
+    expect(code).toBe(2);
+    expect(stderr).toContain('not a link out of it');
   });
 
   it('may import its own files, from a subfolder too', async () => {
