@@ -30,7 +30,7 @@ The review page, behind the toolbar button, shows each of those would-be clicks 
 Privacy:
 
 - Nothing leaves your device. heyo has no server and makes no network calls.
-- It never stores the contents of the fields you type in, and never what a password field holds. It reads the page's text fields only to blank what you typed out of the button names it keeps. The privacy policy lists the two cases where typed text can still appear in a name.
+- It never stores the contents of the fields you type in, and never what a password field holds. It reads the page's text fields only to blank what you typed out of the button names it keeps. The privacy policy lists the three cases where typed text can still appear in a name.
 - You can export the log to a file or delete it at any time.
 
 heyo is open source: https://github.com/krishhgg/heyo

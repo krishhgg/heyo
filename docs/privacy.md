@@ -46,9 +46,10 @@ On the review page you can mark heyo's choices right or wrong. Those marks are s
 
 ## Where typed text can still end up in the log
 
-Pages sometimes repeat what you typed in a button or a link, such as "Search for ...". heyo compares each name, and the text under the pointer, with what the page's text fields hold at that moment and blanks any part that matches. Two cases are not covered:
+Pages sometimes repeat what you typed in a button or a link, such as "Search for ...". heyo compares each name, and the text under the pointer, with what the page's text fields hold at that moment. It blanks any run of six or more characters a name shares with what you typed. When what you typed is three words or fewer, it also blanks each of those words of three or more characters. Three cases are not covered:
 
 - Text of one or two characters. heyo does not match text that short, so if you type "Al" into a field and the page shows a button named "Al", that name is recorded.
+- A short word out of a longer text. With "Alice has a new message" in a field, a button named "Alice" is recorded, because the name is under six characters and the text is over three words.
 - Text you wrote earlier that a page now shows as its own content. The subject of a message you sent can appear as the name of a link.
 
 If a page has more than 300 text fields, or a field holds more than 20,000 characters, heyo cannot check them all, and it blanks every name whole.
