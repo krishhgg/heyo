@@ -61,6 +61,7 @@ function passingLog() {
     },
     decision: { action: 'retarget', candidate: 0 },
     decisionVersion: 'seed',
+    extensionVersion: 'seed',
     followUp: { dt: 600, dx: 13, dy: 0, kind: 'control', candidate: 0, dist: 3 },
   }));
   const reviews = records.map((r) => ({ recordId: r.id, candidate: 0, verdict: 'right', t: r.t }));
