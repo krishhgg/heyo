@@ -4,7 +4,7 @@
 // is better. The held-out split is judged once, at the end, and never enters
 // the workspace.
 import { spawn } from 'node:child_process';
-import { chmod, cp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, cp, lstat, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { retargetGates, wrongTargetGate } from '../src/core/gates';
@@ -213,6 +213,31 @@ export function runAgent(
   });
 }
 
+/** A path as one word of a shell command, whatever characters it holds. */
+export function shellWord(text: string): string {
+  return `'${text.replaceAll("'", `'\\''`)}'`;
+}
+
+/** What a folder is on disk, to tell later whether the same folder is still at its path. */
+async function identityOf(path: string): Promise<{ ino: number; dev: number }> {
+  const { ino, dev } = await lstat(path);
+  return { ino, dev };
+}
+
+/**
+ * True while a folder is still the one it was: not moved away, not replaced by
+ * another folder or by a link, and reached through no link.
+ */
+async function isSameFolder(path: string, was: { ino: number; dev: number }): Promise<boolean> {
+  try {
+    const now = await lstat(path);
+    const same = !now.isSymbolicLink() && now.ino === was.ino && now.dev === was.dev;
+    return same && (await realpath(path)) === path;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Writes a file of the runner's into the workspace, in place of whatever is
  * there. An agent can leave a link under any name, and a plain write would
@@ -361,14 +386,16 @@ export async function runLoop(options: RunOptions, tools: LoopTools): Promise<Lo
   }
   await writeFresh(join(workspace, 'train.json'), `${JSON.stringify(train)}\n`);
   await writeFresh(join(workspace, 'TASK.md'), task(options.rounds));
-  const node = JSON.stringify(process.execPath);
+  // Each path is one quoted word, so a path with a space, a dollar sign or a
+  // backtick in it reaches the command as it is.
+  const node = shellWord(process.execPath);
   await writeFresh(
     join(workspace, 'score'),
-    `#!/bin/sh\nexec ${node} ${JSON.stringify(join(root, 'scorer/cli.mjs'))} score ${JSON.stringify(join(workspace, 'train.json'))} --decision ${JSON.stringify(work)} "$@"\n`,
+    `#!/bin/sh\nexec ${node} ${shellWord(join(root, 'scorer/cli.mjs'))} score ${shellWord(join(workspace, 'train.json'))} --decision ${shellWord(work)} "$@"\n`,
   );
   await writeFresh(
     join(workspace, 'lint'),
-    `#!/bin/sh\nexec ${node} ${JSON.stringify(join(root, 'loop/cli.mjs'))} lint ${JSON.stringify(work)}\n`,
+    `#!/bin/sh\nexec ${node} ${shellWord(join(root, 'loop/cli.mjs'))} lint ${shellWord(work)}\n`,
   );
   await chmod(join(workspace, 'score'), 0o755);
   await chmod(join(workspace, 'lint'), 0o755);
@@ -399,9 +426,26 @@ export async function runLoop(options: RunOptions, tools: LoopTools): Promise<Lo
       ])
     : null;
 
+  // The agent can move its workspace and put a link in its place. Everything
+  // the runner then did there, starting with removing the decision folder to
+  // put the best one back, would be done to whatever the link points at.
+  const folders = [
+    { path: workspace, was: await identityOf(workspace) },
+    { path: privateDir, was: await identityOf(privateDir) },
+  ];
+  const intact = async () => {
+    for (const { path, was } of folders) if (!(await isSameFolder(path, was))) return false;
+    return true;
+  };
+
   const rounds: LoopResult['rounds'] = [];
   for (let round = 1; round <= options.rounds; round++) {
     const ran = await runAgent(options.agent, workspace, profile, options.minutes * 60_000);
+    if (!(await intact())) {
+      throw new Error(
+        'The workspace was moved or replaced while the agent ran. The run stopped there and wrote nothing more.',
+      );
+    }
     let kept = false;
     let line: string;
     // An agent can leave the folder in any state, gone included. That is a

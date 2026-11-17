@@ -48,6 +48,7 @@ The workspace holds:
 - **The lint rejects rules fitted to examples.** No hostnames, selectors, URLs or paths. Numbers have at most 3 significant digits. Strings are short lower-case keywords. No I/O, time or randomness, and no module-level variable that can be assigned again. The module stays under 400 lines. `npm run lint:decision` runs the same lint on `src/decision`, and CI runs it too.
 - **The decision cannot see labels.** The scorer runs it in a process that is sent click features and nothing else. See [scoring.md](scoring.md).
 - **The decision cannot count its calls.** The scorer runs the clicks twice, the second time in reverse order in a new process, and refuses a decision that answers a click differently. A rule that depends on where a click sits in the log would not hold in the browser, where every page starts fresh.
+- **The runner writes only into the folders it made.** After each round it checks that the workspace and its own folder are still the same folders, and stops if one was moved or replaced. It never writes through a link the agent left under one of its file names.
 - **A round ends when the agent's processes are gone.** The agent runs in a process group of its own. The whole group is killed when the time is up and when the command returns, so nothing it started can edit the decision while it is judged.
 
 On Linux there is no `sandbox-exec`. The loop still runs with `--no-sandbox`, and the lint and the scorer's isolation still apply, but nothing stops the agent from reading the log file.

@@ -26,6 +26,7 @@ import {
   isInside,
   runAgent,
   sandboxProfile,
+  shellWord,
   type LoopResult,
   type Standing,
 } from './main';
@@ -102,6 +103,14 @@ describe('codePaths', () => {
         ? [await realpath(join(root, 'node_modules'))]
         : [],
     );
+  });
+});
+
+describe('shellWord', () => {
+  it('quotes a path so the shell takes it as it is', () => {
+    expect(shellWord('/tmp/plain')).toBe("'/tmp/plain'");
+    expect(shellWord('/tmp/heyo-$USER `id`')).toBe("'/tmp/heyo-$USER `id`'");
+    expect(shellWord("/tmp/it's")).toBe("'/tmp/it'\\''s'");
   });
 });
 
@@ -268,6 +277,52 @@ describe('the loop', () => {
     expect(await readFile(victim, 'utf8')).toBe('untouched');
     expect((await lstat(join(workspace, 'history.md'))).isSymbolicLink()).toBe(false);
     expect(await readFile(join(workspace, 'history.md'), 'utf8')).toMatch(/Round 2/);
+  });
+
+  it('stops when the agent puts a link in place of its workspace', async () => {
+    // A folder the link points at, laid out like the repo's src, tests and all.
+    const victim = join(dir, 'victim');
+    await mkdir(join(victim, 'decision'), { recursive: true });
+    await writeFile(join(victim, 'decision/index.ts'), 'the real decision');
+    await writeFile(join(victim, 'decision/index.test.ts'), 'its tests');
+    const swapper = await agent(
+      'swapper',
+      `import { renameSync, symlinkSync } from 'node:fs';
+       const here = process.cwd();
+       renameSync(here, here + '-moved');
+       symlinkSync(${JSON.stringify(victim)}, here);`,
+    );
+    const workspace = join(dir, 'swapper');
+    const failed = await run(process.execPath, [
+      cli,
+      'run',
+      ...['--log', logFile, '--agent', swapper, '--rounds', '2'],
+      ...['--workspace', workspace, '--decision', join(root, 'loop/fixtures/decision')],
+    ]).then(
+      () => null,
+      (error: { stderr: string }) => error.stderr,
+    );
+    expect(failed).toMatch(/The workspace was moved or replaced/);
+    expect(await readFile(join(victim, 'decision/index.ts'), 'utf8')).toBe('the real decision');
+    expect(await readFile(join(victim, 'decision/index.test.ts'), 'utf8')).toBe('its tests');
+  });
+
+  it('runs its scripts from a workspace with shell characters in its name', async () => {
+    const checks = await agent(
+      'odd',
+      `import { execFileSync } from 'node:child_process';
+       import { writeFileSync } from 'node:fs';
+       const score = execFileSync('./score', ['--json'], { encoding: 'utf8' });
+       const lint = execFileSync('./lint', { encoding: 'utf8' });
+       writeFileSync('checks.json', JSON.stringify({ misses: JSON.parse(score).score.misses, lint }));`,
+    );
+    const { workspace } = await loop("odd $HOME `id` it's", checks);
+    const seen = JSON.parse(await readFile(join(workspace, 'checks.json'), 'utf8')) as {
+      misses: number;
+      lint: string;
+    };
+    expect(seen.misses).toBeGreaterThan(100);
+    expect(seen.lint).toContain('passes the lint');
   });
 
   it('goes on when the agent removes the decision folder', async () => {
