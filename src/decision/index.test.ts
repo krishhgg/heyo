@@ -67,6 +67,8 @@ describe('decide', () => {
       const candidates = [candidate(0, 3, { label })];
       expect(decide(features({ candidates })), label).toEqual(refuse('irreversible'));
     }
+    const blanked = [candidate(0, 3, { label: 'Search for …', redacted: true })];
+    expect(decide(features({ candidates: blanked }))).toEqual(refuse('irreversible'));
     for (const label of ['Bookmarks', 'Likes and replies', 'Paying users', 'Open']) {
       const candidates = [candidate(0, 3, { label })];
       expect(decide(features({ candidates })), label).toEqual(retarget(0));

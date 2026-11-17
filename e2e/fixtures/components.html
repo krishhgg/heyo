@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: web components</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      .at {
+        position: absolute;
+      }
+      button {
+        width: 80px;
+        height: 32px;
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Row 1: a shadow button whose content, an icon with no text, is slotted in from the page. -->
+    <x-slotted id="slotted" class="at" style="left: 100px; top: 100px"
+      ><span
+        id="slotted-icon"
+        style="display: inline-block; width: 40px; height: 16px; background: #99a"
+      ></span
+    ></x-slotted>
+
+    <!-- Row 2: a text field inside a shadow root, and a page button near it. -->
+    <x-field id="field" class="at" style="left: 100px; top: 200px"></x-field>
+    <button id="near-field" class="at" style="left: 300px; top: 260px">Apply</button>
+
+    <!-- Row 3: a menu inside a shadow root that closes on any click outside it. -->
+    <x-menu id="menu" class="at" style="left: 100px; top: 340px"></x-menu>
+    <button id="near-menu" class="at" style="left: 300px; top: 400px">Filter</button>
+
+    <!-- Row 4: plain text inside a shadow root, with a link beside it. -->
+    <x-text id="text" class="at" style="left: 100px; top: 480px"></x-text>
+
+    <!-- Row 5: a button inside a closed shadow root. -->
+    <x-closed id="closed" class="at" style="left: 100px; top: 580px"></x-closed>
+
+    <script>
+      const define = (name, mode, html, setup) =>
+        customElements.define(
+          name,
+          class extends HTMLElement {
+            constructor() {
+              super();
+              const root = this.attachShadow({ mode });
+              root.innerHTML = html;
+              setup?.(root, this);
+            }
+          },
+        );
+      const button = 'width: 80px; height: 32px; box-sizing: border-box; display: block';
+
+      define('x-slotted', 'open', `<button style="${button}"><slot></slot></button>`);
+      define(
+        'x-field',
+        'open',
+        '<input style="width: 160px; height: 32px; box-sizing: border-box; display: block" />',
+      );
+      define(
+        'x-menu',
+        'open',
+        '<div id="pop" style="width: 120px; height: 40px">Open menu</div>',
+        (root) => {
+          document.addEventListener('click', (event) => {
+            if (!event.composedPath().includes(root.host)) root.getElementById('pop')?.remove();
+          });
+        },
+      );
+      define(
+        'x-text',
+        'open',
+        '<p style="margin: 0; width: 200px">Shadow paragraph text.</p>' +
+          '<a href="#shadow-link" style="position: absolute; left: 240px; top: 0; white-space: nowrap">Shadow link</a>',
+      );
+      define('x-closed', 'closed', `<button style="${button}">Closed</button>`);
+    </script>
+  </body>
+</html>

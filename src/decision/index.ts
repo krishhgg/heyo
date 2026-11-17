@@ -87,8 +87,9 @@ function refuse(reason: RefuseReason): Decision {
   return { action: 'refuse', reason };
 }
 
+/** A label with a blanked part cannot be checked, so it counts as irreversible. */
 function looksIrreversible(candidate: Candidate): boolean {
-  return IRREVERSIBLE_PATTERN.test(candidate.label);
+  return candidate.redacted || IRREVERSIBLE_PATTERN.test(candidate.label);
 }
 
 function inside(sample: PathSample, candidate: Candidate): boolean {

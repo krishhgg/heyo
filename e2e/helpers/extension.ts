@@ -27,7 +27,13 @@ export async function launchWithExtension(
     headless: options.headless ?? true,
     viewport: { width: 1280, height: 800 },
     recordVideo: options.recordVideoDir ? { dir: options.recordVideoDir } : undefined,
-    args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
+    args: [
+      `--disable-extensions-except=${extensionDir}`,
+      `--load-extension=${extensionDir}`,
+      // Any *.heyo.test name reaches the local fixture server. Unlike localhost,
+      // such a page is not a secure context, which is what a plain HTTP site is.
+      '--host-resolver-rules=MAP *.heyo.test 127.0.0.1',
+    ],
   });
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
   const extensionId = new URL(worker.url()).host;

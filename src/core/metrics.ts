@@ -1,6 +1,6 @@
 // The numbers the plan steers by, computed from a log and a decision function.
 import { daysBetween } from './days';
-import { isDoublePress, isLabeledMiss } from './labels';
+import { isDoublePress, isLabeledMiss, isMaskedMiss } from './labels';
 import { upperBound } from './stats';
 import type { ClickRecord, DayCount, Decide, Review } from './types';
 
@@ -92,6 +92,8 @@ export interface MissRate {
   activeDays: number;
   clicks: number;
   misses: number;
+  /** Clicks that look like misses but sit on a page that changes on its own. Not counted as misses. */
+  masked: number;
   /** misses / clicks. Null with no clicks. */
   rate: number | null;
   /** misses / activeDays. Null with no active days. */
@@ -113,6 +115,7 @@ export function missRate(records: ClickRecord[], counts: DayCount[], today: stri
     activeDays: days.length,
     clicks,
     misses,
+    masked: records.filter(isMaskedMiss).length,
     rate: clicks > 0 ? misses / clicks : null,
     perDay: days.length > 0 ? misses / days.length : null,
   };

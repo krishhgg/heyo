@@ -100,6 +100,7 @@ describe('missRate', () => {
       activeDays: 2,
       clicks: 400,
       misses: 2,
+      masked: 0,
       rate: 0.005,
       perDay: 1,
     });
@@ -111,12 +112,34 @@ describe('missRate', () => {
     expect(missRate([], counts, '2026-11-05')).toMatchObject({ elapsedDays: 4, activeDays: 2 });
   });
 
+  it('counts a retried click on a page that changes on its own as masked, not as a miss', () => {
+    const mutation = {
+      mutation: true,
+      focus: false,
+      selection: false,
+      scroll: false,
+      navigation: false,
+    };
+    const churned = { ...two, reacted: true, reaction: mutation, churn: true };
+    const records = [
+      record(churned, hit(0, 4)),
+      record({ ...churned, churn: false }, hit(0, 4)),
+      record({ ...churned, reaction: { ...mutation, focus: true } }, hit(0, 4)),
+      record(churned),
+    ];
+    expect(missRate(records, [day('2026-11-02', 50)], '2026-11-02')).toMatchObject({
+      misses: 0,
+      masked: 1,
+    });
+  });
+
   it('has no rate without clicks', () => {
     expect(missRate([], [], '2026-11-04')).toEqual({
       elapsedDays: 0,
       activeDays: 0,
       clicks: 0,
       misses: 0,
+      masked: 0,
       rate: null,
       perDay: null,
     });

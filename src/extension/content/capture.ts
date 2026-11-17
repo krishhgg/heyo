@@ -6,12 +6,14 @@ import type { ClickFeatures, ClickRecord, FollowUp, PathSample } from '../../cor
 import { decide } from '../../decision';
 import type { WorkerMessage } from '../messages';
 import { decisionVersion } from '../version';
-import { distanceToElement, findCandidates, type Found } from './candidates';
-import type { HasListener } from './clickable';
-import { describeUnder } from './describe';
+import { boxOf, findCandidates, type Found } from './candidates';
+import { isDisabled, tagOf, type HasListener } from './clickable';
+import { describeUnder, labelOf, typedText } from './describe';
+import { deepestAt } from './dom';
 import { classifyHit, type Hit } from './hit';
 import { hasListener } from './listeners';
-import { reacted, ReactionWatch } from './reaction';
+import { BackgroundWatch, reacted, ReactionWatch } from './reaction';
+import { uuid } from './uuid';
 
 /** The page gets this long after the click to show a reaction. */
 const SETTLE_MS = 50;
@@ -19,7 +21,8 @@ const SETTLE_MS = 50;
 /** How much cursor path the log keeps before a press. */
 const PATH_WINDOW_MS = 300;
 
-const MAX_PATH_SAMPLES = 64;
+/** A replaced control matches a logged candidate when its box moved by at most this many px. */
+const SAME_BOX_PX = 2;
 
 interface Move {
   t: number;
@@ -44,7 +47,9 @@ interface Press {
   empty: {
     watch: ReactionWatch;
     found: Found;
-    features: Omit<ClickFeatures, 'press' | 'reacted' | 'reaction' | 'blurred'>;
+    /** Null in a cross-origin iframe, where focus is read at the click instead. */
+    focused: boolean | null;
+    features: Omit<ClickFeatures, 'press' | 'focused' | 'reacted' | 'reaction' | 'blurred'>;
   } | null;
 }
 
@@ -54,7 +59,9 @@ interface Pending {
   x: number;
   y: number;
   t: number;
-  elements: Element[];
+  found: Found;
+  /** The page scrolled after the click, so positions no longer line up with it. */
+  scrolled: boolean;
 }
 
 function round(value: number): number {
@@ -75,9 +82,24 @@ function siteOf(): string {
   return location.hostname;
 }
 
+/**
+ * Whether the tab had focus at the press. An iframe's own document gains focus
+ * only after the press, so it asks the top page. A cross-origin iframe cannot,
+ * and returns null.
+ */
+function tabFocused(): boolean | null {
+  if (window === window.top) return document.hasFocus();
+  try {
+    return window.top?.document.hasFocus() ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function startCapture(): void {
   const site = siteOf();
-  let moves: Move[] = [];
+  const background = new BackgroundWatch();
+  const moves: Move[] = [];
   let press: Press | null = null;
   /** The press whose click is waiting out the settle time. */
   let settling: { press: Press; timer: number } | null = null;
@@ -112,6 +134,11 @@ export function startCapture(): void {
       .map((m) => ({ t: Math.round(m.t - p.t), x: round(m.x - p.x), y: round(m.y - p.y) }));
   }
 
+  function dropPress(): void {
+    press?.empty?.watch.stop();
+    press = null;
+  }
+
   /** Logs a settled empty-space click. Pass true when the page is unloading. */
   function finalize(unloading = false): void {
     if (!settling) return;
@@ -126,13 +153,14 @@ export function startCapture(): void {
     const features: ClickFeatures = {
       ...p.empty.features,
       press: { ms: Math.round((p.up ?? p.t) - p.t), move: round(p.move) },
+      focused: p.empty.focused ?? document.hasFocus(),
       reacted: didReact,
       reaction,
-      blurred: p.empty.watch.tookFocusOffControl,
+      blurred: p.empty.watch.movedFocusByDefault,
     };
     const record: ClickRecord = {
       v: 1,
-      id: crypto.randomUUID(),
+      id: uuid(),
       t: p.epoch,
       site,
       features,
@@ -141,17 +169,49 @@ export function startCapture(): void {
       followUp: null,
     };
     send({ type: 'record', record });
-    pending = { id: record.id, x: p.x, y: p.y, t: p.t, elements: p.empty.found.elements };
+    pending = { id: record.id, x: p.x, y: p.y, t: p.t, found: p.empty.found, scrolled: false };
+  }
+
+  /**
+   * The logged candidate a later press hit, or null. A page can replace a
+   * control with an identical node between the two presses, so a candidate
+   * that left the document also matches a control with the same tag, label
+   * and box, when exactly one candidate fits.
+   */
+  function matchCandidate(element: Element, target: Element, first: Pending): number | null {
+    const { elements, candidates } = first.found;
+    const exact = elements.indexOf(element);
+    if (exact >= 0) return exact;
+    const related = elements.findIndex((e) => e.contains(element) || element.contains(e));
+    if (related >= 0) return related;
+    if (first.scrolled) return null;
+    const box = boxOf(element, target, first.x, first.y);
+    if (!box) return null;
+    const label = labelOf(element, typedText()).text;
+    const near = (a: number, b: number) => Math.abs(a - b) <= SAME_BOX_PX;
+    const same = candidates.filter(
+      (c, i) =>
+        !elements[i]?.isConnected &&
+        c.tag === tagOf(element) &&
+        c.label === label &&
+        near(c.rect.x, box.rect.x) &&
+        near(c.rect.y, box.rect.y) &&
+        near(c.rect.w, box.rect.w) &&
+        near(c.rect.h, box.rect.h),
+    );
+    return same.length === 1 ? same[0]!.id : null;
   }
 
   /** Describes a press that came after a logged click, relative to that click. */
-  function followUpOf(event: PointerEvent, hit: Hit, first: Pending): FollowUp {
+  function followUpOf(event: PointerEvent, hit: Hit, target: Element, first: Pending): FollowUp {
     const element = hit.kind === 'control' ? hit.clickable?.element : undefined;
-    let candidate: number | null = null;
-    if (element) {
-      const exact = first.elements.indexOf(element);
-      const related = first.elements.findIndex((e) => e.contains(element) || element.contains(e));
-      candidate = exact >= 0 ? exact : related >= 0 ? related : null;
+    const candidate = element ? matchCandidate(element, target, first) : null;
+    let dist: number | null = null;
+    if (candidate !== null) {
+      // The distance measured at the first click. The control may have moved since.
+      dist = first.found.candidates[candidate]?.dist ?? null;
+    } else if (element && !first.scrolled) {
+      dist = boxOf(element, target, first.x, first.y)?.dist ?? null;
     }
     return {
       dt: Math.round(event.timeStamp - first.t),
@@ -159,7 +219,7 @@ export function startCapture(): void {
       dy: round(event.clientY - first.y),
       kind: hit.kind,
       candidate,
-      dist: element ? distanceToElement(element, first.x, first.y) : null,
+      dist,
     };
   }
 
@@ -168,48 +228,60 @@ export function startCapture(): void {
     // A new press ends the previous click's settle time, so the page's reaction
     // to this press is not charged to that click.
     finalize();
-    press?.empty?.watch.stop();
-    press = null;
+    dropPress();
 
-    const lookup = listenerLookup();
     const path = event.composedPath();
-    const hit = classifyHit(path[0] ?? null, event.clientX, event.clientY, lookup);
+    const origin = path[0];
+    if (!(origin instanceof Element)) return;
+    const at = { x: event.clientX, y: event.clientY, t: event.timeStamp };
+    // The event path stops at a closed shadow root's host. Look inside it.
+    const target = deepestAt(origin, at.x, at.y);
+    const lookup = listenerLookup();
+    const hit = classifyHit(target, at.x, at.y, lookup);
 
     if (pending) {
-      if (event.timeStamp - pending.t <= FOLLOW_UP_WINDOW_MS) {
-        send({ type: 'followUp', id: pending.id, followUp: followUpOf(event, hit, pending) });
+      if (at.t - pending.t <= FOLLOW_UP_WINDOW_MS) {
+        send({
+          type: 'followUp',
+          id: pending.id,
+          followUp: followUpOf(event, hit, target, pending),
+        });
       }
       pending = null;
     }
 
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
 
-    const at = { x: event.clientX, y: event.clientY, t: event.timeStamp };
     let empty: Press['empty'] = null;
-    if (hit.kind === 'empty' && path[0] instanceof Element) {
+    if (hit.kind === 'empty') {
+      const typed = typedText();
+      const found = findCandidates(at.x, at.y, lookup, typed);
       empty = {
         watch: new ReactionWatch(path),
-        found: findCandidates(at.x, at.y, lookup),
+        found,
+        focused: tabFocused(),
         features: {
-          candidates: [],
+          candidates: found.candidates,
           path: pathBefore(at),
-          focused: document.hasFocus(),
-          under: describeUnder(path[0]),
+          churn: background.changedBefore(at.t, PATH_WINDOW_MS),
+          under: describeUnder(target, typed),
           point: { x: round(at.x), y: round(at.y) },
           viewport: { w: window.innerWidth, h: window.innerHeight },
           topFrame: window === window.top,
           listenersOnPath: path.filter(lookup).length,
         },
       };
-      empty.features.candidates = empty.found.candidates;
     }
     press = { ...at, epoch: Date.now(), up: null, move: 0, hit, empty };
   }
 
   function onPointerMove(event: PointerEvent): void {
     if (!event.isTrusted || event.pointerType !== 'mouse') return;
-    moves.push({ t: event.timeStamp, x: event.clientX, y: event.clientY });
-    if (moves.length > MAX_PATH_SAMPLES) moves = moves.slice(-MAX_PATH_SAMPLES);
+    const now = event.timeStamp;
+    background.touch(now);
+    moves.push({ t: now, x: event.clientX, y: event.clientY });
+    // Keep the path window by time, so a fast display does not cut it short.
+    while (moves.length > 0 && moves[0]!.t < now - PATH_WINDOW_MS) moves.shift();
     if (press && press.up === null) {
       press.move = Math.max(
         press.move,
@@ -222,10 +294,18 @@ export function startCapture(): void {
     if (!event.isTrusted || event.button !== 0 || !press || press.up !== null) return;
     press.up = event.timeStamp;
     press.move = Math.max(press.move, Math.hypot(event.clientX - press.x, event.clientY - press.y));
+    // Chrome sends no click for a press on a disabled control. Count the press here.
+    const control = press.hit.clickable?.element;
+    if (press.hit.kind === 'control' && control && isDisabled(control)) {
+      send({ type: 'count', site, field: 'hits' });
+      press = null;
+    }
   }
 
   function onClick(event: MouseEvent): void {
+    // A click from the keyboard has no pointer type and belongs to no press.
     if (!event.isTrusted || event.button !== 0 || !press) return;
+    if ((event as PointerEvent).pointerType !== 'mouse') return;
     const p = press;
     press = null;
     if (!p.empty) {
@@ -233,6 +313,15 @@ export function startCapture(): void {
       return;
     }
     settling = { press: p, timer: window.setTimeout(() => finalize(), SETTLE_MS) };
+  }
+
+  /** A press the browser cancelled, such as one that became a native drag, has no click. */
+  function onPointerCancel(): void {
+    dropPress();
+  }
+
+  function onScroll(): void {
+    if (pending) pending.scrolled = true;
   }
 
   /** A page that unloads during the settle time reacted by navigating. */
@@ -246,9 +335,12 @@ export function startCapture(): void {
     window.removeEventListener('pointerdown', onPointerDown, true);
     window.removeEventListener('pointermove', onPointerMove, true);
     window.removeEventListener('pointerup', onPointerUp, true);
+    window.removeEventListener('pointercancel', onPointerCancel, true);
     window.removeEventListener('click', onClick, true);
+    window.removeEventListener('scroll', onScroll, true);
     window.removeEventListener('pagehide', onPageHide, true);
-    press?.empty?.watch.stop();
+    background.stop();
+    dropPress();
     settling?.press.empty?.watch.stop();
     if (settling) clearTimeout(settling.timer);
   }
@@ -256,6 +348,8 @@ export function startCapture(): void {
   window.addEventListener('pointerdown', onPointerDown, true);
   window.addEventListener('pointermove', onPointerMove, { capture: true, passive: true });
   window.addEventListener('pointerup', onPointerUp, true);
+  window.addEventListener('pointercancel', onPointerCancel, true);
   window.addEventListener('click', onClick, true);
+  window.addEventListener('scroll', onScroll, { capture: true, passive: true });
   window.addEventListener('pagehide', onPageHide, true);
 }

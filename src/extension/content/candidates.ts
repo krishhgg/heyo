@@ -4,6 +4,7 @@ import { distanceToRect } from '../../core/geometry';
 import type { Candidate } from '../../core/types';
 import { closestClickable, isDisabled, roleOf, tagOf, type HasListener } from './clickable';
 import { labelOf } from './describe';
+import { elementAt } from './dom';
 
 /** The log keeps candidates out to the labeled-miss radius. */
 const RADII = [2, 4, 6, 8, 10, 12, 15, 18, 21, 24, 27, 30];
@@ -22,22 +23,11 @@ const OFFSETS: { dx: number; dy: number }[] = RADII.flatMap((radius) => {
   });
 });
 
-/** The topmost element at a point, looking inside open shadow roots. */
-function elementAt(x: number, y: number): Element | null {
-  let element = document.elementFromPoint(x, y);
-  while (element?.shadowRoot) {
-    const inner = element.shadowRoot.elementFromPoint(x, y);
-    if (!inner || inner === element) break;
-    element = inner;
-  }
-  return element;
-}
-
 function round(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-/** The element's box nearest the click point, relative to that point, and its distance. */
+/** An element's box nearest a point, relative to that point, and its distance. */
 function nearestBox(element: Element, x: number, y: number): { rect: Rect; dist: number } | null {
   let best: { rect: Rect; dist: number } | null = null;
   for (const box of element.getClientRects()) {
@@ -47,6 +37,25 @@ function nearestBox(element: Element, x: number, y: number): { rect: Rect; dist:
     if (!best || dist < best.dist) best = { rect, dist };
   }
   return best;
+}
+
+function roundRect(rect: Rect): Rect {
+  return { x: round(rect.x), y: round(rect.y), w: round(rect.w), h: round(rect.h) };
+}
+
+/**
+ * The box of a control nearest a point. A control can have no box of its own,
+ * such as a link whose only content is absolutely positioned. Then the box of
+ * the element inside it that the click would land on stands in.
+ */
+export function boxOf(
+  control: Element,
+  inside: Element,
+  x: number,
+  y: number,
+): { rect: Rect; dist: number } | null {
+  const box = nearestBox(control, x, y) ?? nearestBox(inside, x, y);
+  return box ? { rect: roundRect(box.rect), dist: round(box.dist) } : null;
 }
 
 export interface Found {
@@ -60,7 +69,12 @@ export interface Found {
  * point would reach. Only the topmost element at a point counts, because a
  * click there would go to it and nothing beneath it.
  */
-export function findCandidates(x: number, y: number, hasListener: HasListener): Found {
+export function findCandidates(
+  x: number,
+  y: number,
+  hasListener: HasListener,
+  typed: string[],
+): Found {
   const seen = new Set<Element>();
   const found = new Map<Element, Candidate>();
   for (const { dx, dy } of OFFSETS) {
@@ -72,24 +86,21 @@ export function findCandidates(x: number, y: number, hasListener: HasListener): 
     seen.add(top);
     const clickable = closestClickable(top, hasListener);
     if (!clickable || found.has(clickable.element)) continue;
-    const box = nearestBox(clickable.element, x, y);
-    if (!box) continue;
     const { element, kind, signals } = clickable;
+    const box = boxOf(element, top, x, y);
+    if (!box) continue;
+    const label = kind === 'control' ? labelOf(element, typed) : { text: '', redacted: false };
     found.set(element, {
       id: 0,
       kind,
-      dist: round(box.dist),
-      rect: {
-        x: round(box.rect.x),
-        y: round(box.rect.y),
-        w: round(box.rect.w),
-        h: round(box.rect.h),
-      },
+      dist: box.dist,
+      rect: box.rect,
       tag: tagOf(element),
       role: roleOf(element),
       type: element.getAttribute('type'),
       signals,
-      label: kind === 'control' ? labelOf(element) : '',
+      label: label.text,
+      redacted: label.redacted,
       disabled: isDisabled(element),
     });
   }
@@ -101,10 +112,4 @@ export function findCandidates(x: number, y: number, hasListener: HasListener): 
     candidates: nearest.map(([, candidate], id) => ({ ...candidate, id })),
     elements: nearest.map(([element]) => element),
   };
-}
-
-/** Px from a point to the nearest edge of an element. Null if the element has no box. */
-export function distanceToElement(element: Element, x: number, y: number): number | null {
-  const box = nearestBox(element, x, y);
-  return box ? round(box.dist) : null;
 }

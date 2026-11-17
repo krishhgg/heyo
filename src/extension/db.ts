@@ -1,5 +1,6 @@
 // The local log, in IndexedDB under the extension's own origin. The service
 // worker writes it. The extension's pages read it and add reviews.
+import { dayOf } from '../core/days';
 import type { ClickRecord, DayCount, FollowUp, Review } from '../core/types';
 
 const NAME = 'heyo';
@@ -37,13 +38,6 @@ function open(): Promise<IDBDatabase> {
     req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'));
   });
   return opening;
-}
-
-/** The local calendar day of a time, as YYYY-MM-DD. */
-export function dayOf(epoch: number): string {
-  const date = new Date(epoch);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 export async function putRecord(record: ClickRecord): Promise<void> {

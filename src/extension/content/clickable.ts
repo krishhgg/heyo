@@ -1,6 +1,7 @@
 // Decides whether an element looks clickable, and finds the clickable element
 // a click on a given node would reach.
 import type { ClickSignal } from '../../core/types';
+import { parentOf } from './dom';
 
 /** Elements whose content heyo cannot see into. A click on one is a real hit. */
 const OPAQUE_TAGS = new Set(['canvas', 'video', 'iframe', 'embed', 'object', 'audio']);
@@ -84,25 +85,36 @@ function hasPointerCursor(element: Element): boolean {
   return getComputedStyle(element).cursor === 'pointer';
 }
 
+/** A listener on an element with more descendants than this is treated as delegation. */
+const MAX_OWN_DESCENDANTS = 60;
+
+/** True when an element wraps something that is clickable in its own right. */
+function wrapsAControl(element: Element, hasListener: HasListener): boolean {
+  if (element.querySelector(INTERACTIVE_SELECTOR)) return true;
+  const descendants = element.getElementsByTagName('*');
+  if (descendants.length > MAX_OWN_DESCENDANTS) return true;
+  const ownPointer = hasPointerCursor(element);
+  for (const descendant of descendants) {
+    if (hasTabStop(descendant) || hasListener(descendant)) return true;
+    // A pointer cursor that starts below the element marks a separate control.
+    if (!ownPointer && hasPointerCursor(descendant)) return true;
+  }
+  return false;
+}
+
 /**
  * A click listener marks an element as clickable only when the element is the
- * thing being clicked. A listener on the page root or on a wrapper around other
- * controls is event delegation, and React puts every handler on its root.
+ * thing being clicked. A listener on the page root, on a large region or on a
+ * wrapper around other controls is event delegation, and React puts every
+ * handler on its root.
  */
 function isOwnListener(element: Element, hasListener: HasListener): boolean {
   if (element === document.documentElement || element === document.body) return false;
   if (!hasListener(element)) return false;
-  if (element.querySelector(INTERACTIVE_SELECTOR)) return false;
   const rect = element.getBoundingClientRect();
   const viewport = window.innerWidth * window.innerHeight;
-  return rect.width * rect.height < viewport * DELEGATE_VIEWPORT_SHARE;
-}
-
-/** The parent in the flat tree, which crosses out of a shadow root to its host. */
-export function parentOf(element: Element): Element | null {
-  if (element.parentElement) return element.parentElement;
-  const root = element.getRootNode();
-  return root instanceof ShadowRoot ? root.host : null;
+  if (rect.width * rect.height >= viewport * DELEGATE_VIEWPORT_SHARE) return false;
+  return !wrapsAControl(element, hasListener);
 }
 
 /** The signals an element shows on its own, leaving out the inherited pointer cursor. */

@@ -13,15 +13,35 @@ export const DOUBLE_PRESS_MS = 500;
 export const DOUBLE_PRESS_PX = 5;
 
 export function isLabeledMiss(record: ClickRecord): boolean {
+  return !record.features.reacted && retriedNearby(record);
+}
+
+/** True when a follow-up press is a real hit on a control within the miss radius, soon enough. */
+function retriedNearby(record: ClickRecord): boolean {
   const next = record.followUp;
   return (
-    !record.features.reacted &&
     next !== null &&
     next.dt <= FOLLOW_UP_WINDOW_MS &&
     next.kind === 'control' &&
     next.dist !== null &&
     next.dist <= MISS_RADIUS_PX
   );
+}
+
+/**
+ * A click that may be a miss the label cannot see. The user retried nearby, but
+ * the only reaction was a DOM change on a page whose DOM was already changing
+ * before the press. Such a page makes every click look reacted to.
+ */
+export function isMaskedMiss(record: ClickRecord): boolean {
+  const { reaction, churn } = record.features;
+  const onlyMutation =
+    reaction.mutation &&
+    !reaction.focus &&
+    !reaction.selection &&
+    !reaction.scroll &&
+    !reaction.navigation;
+  return onlyMutation && churn === true && retriedNearby(record);
 }
 
 /** The candidate the user went on to click, which stands in for the true target. Null when it was not logged. */

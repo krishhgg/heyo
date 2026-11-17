@@ -26,6 +26,8 @@ export interface Candidate {
   signals: ClickSignal[];
   /** Accessible name or visible text, at most 40 characters. Never a field's value. */
   label: string;
+  /** Part of the label matched text typed into a field on the page and was blanked. */
+  redacted: boolean;
   disabled: boolean;
 }
 
@@ -75,11 +77,17 @@ export interface ClickFeatures {
   reacted: boolean;
   reaction: Reaction;
   /**
-   * The click took focus off a control that is not a text field, such as the
-   * button the user clicked before. Chrome does this on any click outside a
-   * control, so it does not count as a reaction.
+   * The click moved focus the way Chrome does on its own: off a control that is
+   * not a text field, such as the button the user clicked before, or onto a
+   * focusable container around the click. This does not count as a reaction.
    */
   blurred: boolean;
+  /**
+   * The DOM was already changing in the 300 ms before the press, so a mutation
+   * after it may be the page's own background activity. Null when heyo was not
+   * watching for that whole time.
+   */
+  churn: boolean | null;
   under: Under;
   /** The click point in viewport coordinates. */
   point: Point;

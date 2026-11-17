@@ -13,6 +13,7 @@ export function candidate(id: number, dist: number, overrides: Partial<Candidate
     type: null,
     signals: ['native'],
     label: `Button ${id}`,
+    redacted: false,
     disabled: false,
     ...overrides,
   };
@@ -27,6 +28,7 @@ export function features(overrides: Partial<ClickFeatures> = {}): ClickFeatures 
     reacted: false,
     reaction: { mutation: false, focus: false, selection: false, scroll: false, navigation: false },
     blurred: false,
+    churn: false,
     under: { tag: 'div', role: null, label: '' },
     point: { x: 400, y: 300 },
     viewport: { w: 1280, h: 800 },

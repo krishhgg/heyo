@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: tricky pages</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 2000px;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      .at {
+        position: absolute;
+      }
+      button,
+      .pick {
+        width: 80px;
+        height: 32px;
+        box-sizing: border-box;
+      }
+      .pick {
+        cursor: pointer;
+        background: #dde;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Row 1: a small panel that handles its children's clicks. The children show only a pointer cursor. -->
+    <div
+      id="panel"
+      class="at"
+      style="left: 100px; top: 100px; width: 200px; height: 100px; background: #eee"
+    >
+      <div class="pick at" data-pick="one" style="left: 10px; top: 10px">One</div>
+      <div class="pick at" data-pick="two" style="left: 10px; top: 58px">Two</div>
+    </div>
+
+    <!-- Row 2: a dialog that takes focus when clicked inside, the way dialog libraries build them. -->
+    <div
+      id="dialog"
+      class="at"
+      tabindex="-1"
+      style="left: 400px; top: 100px; width: 300px; height: 100px; background: #eee"
+    >
+      <button id="ok" class="at" style="left: 20px; top: 34px">OK</button>
+      <button id="cancel" class="at" style="left: 200px; top: 34px">Cancel</button>
+    </div>
+
+    <!-- Row 3: a link with no box of its own. Its only content is absolutely positioned. -->
+    <a id="nobox" href="#nobox"
+      ><span class="at" style="left: 100px; top: 260px; width: 80px; height: 32px; background: #dde"
+        >Abs link</span
+      ></a
+    >
+
+    <!-- Row 3: a button the page can swap for an identical one shortly after a click outside it. -->
+    <button id="swap" class="at" style="left: 400px; top: 260px">Swap</button>
+
+    <!-- Row 3: a disabled button. -->
+    <button id="off" class="at" style="left: 600px; top: 260px" disabled>Off</button>
+
+    <!-- Row 4: a plain button used by the scroll and ticker tests. -->
+    <button id="plain" class="at" style="left: 100px; top: 360px">Plain</button>
+
+    <!-- Row 5: a zone that navigates away when its blank part is clicked. -->
+    <div
+      id="leave"
+      class="at"
+      style="left: 100px; top: 460px; width: 200px; height: 60px; background: #eee"
+    >
+      <button id="in-leave" class="at" style="left: 110px; top: 14px">Stay</button>
+    </div>
+
+    <div id="ticker" hidden></div>
+
+    <script>
+      const params = new URLSearchParams(location.search);
+      const picked = [];
+      document.getElementById('panel').addEventListener('click', (event) => {
+        const pick = event.target.closest('[data-pick]')?.dataset.pick;
+        if (pick) picked.push(pick);
+      });
+
+      // Every click the page itself sees, for the test that heyo does not swallow or cancel any.
+      const seen = [];
+      document.addEventListener('click', (event) => {
+        seen.push({ trusted: event.isTrusted, prevented: event.defaultPrevented });
+        // ?swap makes the page replace the Swap button with an identical one, the way a re-render does.
+        if (params.has('swap') && !event.target.closest('#swap')) {
+          setTimeout(() => {
+            const old = document.getElementById('swap');
+            old.replaceWith(old.cloneNode(true));
+          }, 200);
+        }
+      });
+
+      document.getElementById('leave').addEventListener('click', (event) => {
+        if (event.target.id === 'leave') location.href = '/basic.html';
+      });
+
+      // ?ticker makes the page change its own DOM on every frame, like a playing animation.
+      if (params.has('ticker')) {
+        let n = 0;
+        setInterval(
+          () => document.getElementById('ticker').setAttribute('data-n', String(n++)),
+          16,
+        );
+      }
+    </script>
+  </body>
+</html>

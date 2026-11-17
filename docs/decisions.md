@@ -34,13 +34,14 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 
 - A press is classified where it lands, at `pointerdown`, not at `click`. The press point is what the user aimed at, and the same classification serves the first click and the follow-up.
 - Candidates are collected at the press too, before the page can handle anything.
-- A focus change is a reaction only when focus moves into an element or out of a text field. Chrome takes focus off the last-clicked button or link on any click outside a control. Counting that would hide most real misses, because most clicks follow a click on a button or link. The log keeps the fact as `blurred`. This narrows the plan, and the plan now says so.
+- A focus change is a reaction only when focus leaves a text field, or lands somewhere other than a container around the click. Chrome takes focus off the last-clicked button or link on any click outside a control, and gives focus to a focusable container around the click, such as a dialog with `tabindex="-1"`. Counting either would hide most real misses, because most clicks follow a click on a button or link. The log keeps the fact as `blurred`. This narrows the plan, and the plan now says so.
 - A selection change is a reaction only when the visible selection changes. Chrome moves an invisible caret on the first click outside a field, and that fires `selectionchange`. The plan now says so.
 - Ring sampling uses the topmost element at each point (`elementFromPoint`), not every element under it. A click at that point would reach only the topmost one.
 - A click listener marks an element as clickable only when the element is not the page root, wraps no other control, and covers under half the viewport. A listener that fails those tests is event delegation.
 - A pointer cursor is inherited, so a run of nested elements that all show it is one control, named by the outermost.
 - The main-world script wraps `addEventListener` in a Proxy. The function keeps its name and length and still prints as native code, but a script that compares the printed text with a real native function can tell. heyo does not try to hide further.
-- The content script asks the main-world script about listeners with a DOM event whose name is random per page load, handed over before any page script runs. A page cannot use the query to detect the extension.
+- The content script asks the main-world script about listeners with a DOM event whose name is random per page load, handed over before any page script runs. Once the name is handed over nothing answers a later request for it, so a page cannot use the query to detect the extension.
+- The main-world script takes the built-ins it needs (`Reflect.apply`, the `WeakSet` and `Set` methods) before any page script runs, so a page that patches them cannot break its own `addEventListener` calls.
 - A removed click listener is not forgotten. The error goes toward calling a click a real hit, which is the safe side.
 - A scrollbar is counted as a real hit.
 - `site` is the hostname of the top-level page, also for clicks inside iframes, read from `location.ancestorOrigins`.
@@ -48,4 +49,14 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - Clicks with a modifier key are not counted at all. The plan covers plain left clicks only.
 - Records live in IndexedDB under the extension's origin. The service worker writes one message at a time so a follow-up cannot land before its record.
 - The extension asks for no permissions. It needs only its content scripts.
-- Labels never include a field's value or text inside an editable region. A password field is always logged as "password field".
+- A label is the page's own name for a control, cut to 40 characters. It never includes a field's value, text inside an editable region, or text shown with a text cursor, which is how code editors draw what the user types. A password field is always logged as "password field".
+- A page can repeat typed text in a control, such as a button that reads "Search for ...". Any run of 6 characters a label shares with the current value of an input or text area on the page is blanked, and the candidate is marked `redacted`. The decision refuses a redacted candidate, because it cannot check a label it cannot read.
+- What this does not cover: text the user wrote earlier that the page now shows as its own content, such as the subject of a sent message used as a link. That text can appear in a label. The log stays in the browser unless the user exports it.
+- The reaction watch observes every shadow root in the document, not only those on the click's path, because a click outside a component can close a menu inside another one. The search for shadow roots stops after 8 ms. Closed roots are looked up only on custom elements.
+- Measured on this machine, handling an empty-space press takes about 2 ms on a page of 2,000 elements, 7 to 13 ms at 20,000 and about 15 ms at 50,000. Presses that hit something skip all of this.
+- `churn` records whether the DOM was already changing in the 300 ms before the press. A page that changes on its own makes every click look reacted to. Such clicks stay out of the labeled misses, as the plan defines them, and the miss-rate report counts the ones followed by a nearby retry separately as masked.
+- The background watch behind `churn` runs only while the pointer is moving and stops after a second of rest, so an idle or typing-only page pays nothing for it.
+- A follow-up that hits a logged candidate reuses the distance measured at the first click. If the page scrolled in between, an unlogged control gets no distance, because the two positions no longer line up.
+- A candidate that left the document matches a follow-up on a control with the same tag, label and box, when exactly one candidate fits. Pages re-render and replace nodes.
+- A press on a disabled control is counted at the release, since Chrome sends no click for it.
+- Record ids come from `crypto.getRandomValues`. `crypto.randomUUID` does not exist on plain HTTP pages.
