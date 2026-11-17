@@ -120,18 +120,34 @@ import Testing
         #expect(!Verdict(apps: fast, passed: all.subtracting([.missDoesNothing]), ran: all).isGo)
     }
 
-    @Test func oneWorkingWayToDeliverTheClickIsEnough() {
-        #expect(Verdict(apps: fast, passed: all.subtracting([.repost]), ran: all).isGo)
-        #expect(Verdict(apps: fast, passed: all.subtracting([.rewrite]), ran: all).isGo)
+    @Test func oneSafeWayToDeliverTheClickIsEnough() {
+        let rewriting: Set<Verdict.Check> = [.rewrite, .rewriteDrag, .rewriteTitleBarDrag]
+        let reposting: Set<Verdict.Check> = [.repost, .heldDrag, .titleBarDrag]
+        #expect(Verdict(apps: fast, passed: all.subtracting(reposting), ran: all).way == .rewrite)
+        #expect(Verdict(apps: fast, passed: all.subtracting(rewriting), ran: all).way == .repost)
         #expect(!Verdict(apps: fast, passed: all.subtracting([.rewrite, .repost]), ran: all).isGo)
+        // Rewriting adds no delay, so it is the way to build on when both are safe.
+        #expect(Verdict(apps: fast, passed: all, ran: all).way == .rewrite)
     }
 
-    @Test func dragsMatterOnlyWhenPressesAreHeld() {
-        // Rewriting works, so nothing is held and a failed drag check does not block.
-        #expect(Verdict(apps: fast, passed: all.subtracting([.titleBarDrag]), ran: all).isGo)
-        // Only re-posting works, so both drag checks must pass.
+    @Test func aWayThatBreaksDragsIsNotSafe() {
+        // A rewritten press starts a drag on the target, not where the user pressed.
+        // Delivering the click is not enough to build on rewriting.
+        let clicksOnly = all.subtracting([.rewriteDrag, .rewriteTitleBarDrag, .repost])
+        let verdict = Verdict(apps: fast, passed: clicksOnly, ran: all)
+        #expect(!verdict.isGo)
+        #expect(verdict.way == nil)
+        #expect(verdict.problems.count == 2)
+        // Re-posting with a broken title-bar drag is no better.
         #expect(!Verdict(apps: fast, passed: all.subtracting([.rewrite, .titleBarDrag]), ran: all).isGo)
         #expect(!Verdict(apps: fast, passed: all.subtracting([.rewrite, .heldDrag]), ran: all).isGo)
+    }
+
+    @Test func aBrokenWayDoesNotBlockWhenTheOtherIsSafe() {
+        // Rewriting breaks drags, as expected. Re-posting passes everything.
+        let verdict = Verdict(apps: fast, passed: all.subtracting([.rewriteDrag, .rewriteTitleBarDrag]), ran: all)
+        #expect(verdict.isGo)
+        #expect(verdict.way == .repost)
     }
 
     @Test func aSlowCallbackIsNotGo() {

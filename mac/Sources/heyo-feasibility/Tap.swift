@@ -3,8 +3,8 @@
 // The plan leaves three things unverified:
 //   - whether a tap can rewrite a press's location so the app gets a real click
 //   - whether it can instead hold the press and post it at the target on release
-//   - whether a held press can turn back into a normal drag, including a
-//     title-bar drag that starts beside the close button
+//   - whether a press handled either way can still become a normal drag,
+//     including a title-bar drag that starts beside the close button
 //
 // This opens a small window of its own, turns a tap on, and posts real mouse
 // events at it. The window records what it received.
@@ -252,25 +252,42 @@ func runTapExperiment() -> TapReport {
         record(.repost,
                onMain { probe.presses } == 1, "pressed \(onMain { probe.presses }) time(s)")
 
-        reset(.repost, zone: zone, target: middle)
-        drag(from: miss, by: 60)
-        let log = onMain { probe.view.log }
-        let dragged = log.first?.hasPrefix("down") == true && log.contains("dragged") && log.last?.hasPrefix("up") == true
-        record(.heldDrag,
-               dragged && onMain { probe.presses } == 0,
-               "the view got: \(log.prefix(3).joined(separator: ", ")) ... \(log.last ?? "nothing"). The button was pressed \(onMain { probe.presses }) time(s).")
+        // A press that turns into a drag. The decision was made at the press, so
+        // each way has to give the drag back where the user pressed.
+        func dragFromTheMiss(_ mode: TapMode, _ check: Verdict.Check) {
+            reset(mode, zone: zone, target: middle)
+            drag(from: miss, by: 60)
+            let log = onMain { probe.view.log }
+            let dragged = log.first?.hasPrefix("down") == true && log.contains("dragged") && log.last?.hasPrefix("up") == true
+            record(check,
+                   dragged && onMain { probe.presses } == 0,
+                   "the view got: \(log.isEmpty ? "nothing" : log.prefix(3).joined(separator: ", ") + " ... " + (log.last ?? "")). The button was pressed \(onMain { probe.presses }) time(s).")
+        }
 
         // The hard case: a title-bar drag that starts just beside the close button.
-        let close = onMain { probe.closeRect }
-        let beside = CGPoint(x: close.maxX + 3, y: close.midY)
-        let closeZone = CGRect(x: close.maxX, y: close.minY, width: 8, height: close.height)
-        let before = onMain { probe.window.frame.origin.x }
-        reset(.repost, zone: closeZone, target: CGPoint(x: close.midX, y: close.midY))
-        drag(from: beside, by: 80)
-        let moved = onMain { probe.window.frame.origin.x } - before
-        record(.titleBarDrag,
-               abs(moved - 80) < 6 && !onMain { probe.closed },
-               "the window moved \(Int(moved)) pt of 80 and is \(onMain { probe.closed } ? "closed" : "still open")")
+        func dragTheTitleBar(_ mode: TapMode, _ check: Verdict.Check) {
+            guard !onMain({ probe.closed }) else {
+                record(check, false, "the window was closed by an earlier check")
+                return
+            }
+            let close = onMain { probe.closeRect }
+            let beside = CGPoint(x: close.maxX + 3, y: close.midY)
+            let closeZone = CGRect(x: close.maxX, y: close.minY, width: 8, height: close.height)
+            let before = onMain { probe.window.frame.origin.x }
+            reset(mode, zone: closeZone, target: CGPoint(x: close.midX, y: close.midY))
+            drag(from: beside, by: 80)
+            let moved = onMain { probe.window.frame.origin.x } - before
+            record(check,
+                   abs(moved - 80) < 6 && !onMain { probe.closed },
+                   "the window moved \(Int(moved)) pt of 80 and is \(onMain { probe.closed } ? "closed" : "still open")")
+        }
+
+        dragFromTheMiss(.repost, .heldDrag)
+        dragTheTitleBar(.repost, .titleBarDrag)
+        // Rewriting moves the press before anyone knows a drag follows, so the
+        // same two drags are tried with it. They come last, in case one closes the window.
+        dragFromTheMiss(.rewrite, .rewriteDrag)
+        dragTheTitleBar(.rewrite, .rewriteTitleBarDrag)
 
         onMain {
             tapState.mode = .off

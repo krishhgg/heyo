@@ -30,12 +30,31 @@ public struct Verdict: Equatable {
         case clicksArrive = "posted clicks reach the window"
         case missDoesNothing = "a near miss does nothing without heyo"
         case rewrite = "rewriting the press's location"
+        case rewriteDrag = "a rewritten press that becomes a drag"
+        case rewriteTitleBarDrag = "a title-bar drag that starts beside the close button, with rewriting"
         case repost = "holding the press and posting it at the target on release"
         case heldDrag = "a held press that becomes a drag"
         case titleBarDrag = "a title-bar drag that starts beside the close button"
     }
 
+    /// A way to deliver a near miss to its target. Each is safe only when it
+    /// delivers exactly one click and a press that turns into a drag still
+    /// drags from where the user pressed.
+    public enum Way: String, CaseIterable {
+        case rewrite = "rewriting the press"
+        case repost = "holding the press and re-posting it"
+
+        var checks: [Check] {
+            switch self {
+            case .rewrite: return [.rewrite, .rewriteDrag, .rewriteTitleBarDrag]
+            case .repost: return [.repost, .heldDrag, .titleBarDrag]
+            }
+        }
+    }
+
     public let problems: [String]
+    /// The way that passed all of its checks. Rewriting comes first, because it adds no delay.
+    public let way: Way?
     public var isGo: Bool { problems.isEmpty }
 
     /// - Parameters:
@@ -46,6 +65,7 @@ public struct Verdict: Equatable {
     ///   - budgetMs: the plan's limit.
     public init(apps: [App]?, passed: Set<Check>?, ran: Set<Check> = [], callbackP95: Double = 0, budgetMs: Double = 30) {
         var found: [String] = []
+        var chosen: Way?
 
         if let apps {
             if apps.isEmpty { found.append("No app's Accessibility hit tests could be measured.") }
@@ -69,15 +89,20 @@ public struct Verdict: Equatable {
             for check in [Check.tapCreated, .clicksArrive, .missDoesNothing] where !passed.contains(check) {
                 found.append("The setup check failed or did not run: \(check.rawValue).")
             }
-            if !passed.contains(.rewrite) && !passed.contains(.repost) {
-                found.append("Neither rewriting nor re-posting a press delivered exactly one click.")
-            }
-            // Rewriting holds nothing back, so drags only matter when re-posting is the way that works.
-            if !passed.contains(.rewrite) {
-                for check in [Check.heldDrag, .titleBarDrag] where !passed.contains(check) {
-                    found.append("\(ran.contains(check) ? "Failed" : "Did not run"): \(check.rawValue).")
+            // The decision is made at the press, before anyone knows whether a drag
+            // follows. So a way counts only with its own two drag checks.
+            let safe = Way.allCases.first { $0.checks.allSatisfy(passed.contains) }
+            if safe == nil {
+                if !passed.contains(.rewrite) && !passed.contains(.repost) {
+                    found.append("Neither rewriting nor re-posting a press delivered exactly one click.")
+                }
+                for way in Way.allCases where passed.contains(way.checks[0]) {
+                    for check in way.checks.dropFirst() where !passed.contains(check) {
+                        found.append("\(ran.contains(check) ? "Failed" : "Did not run"): \(check.rawValue).")
+                    }
                 }
             }
+            chosen = safe
             if callbackP95 > budgetMs {
                 found.append("The tap callback took \(Int(callbackP95.rounded())) ms at the 95th percentile.")
             }
@@ -85,5 +110,6 @@ public struct Verdict: Equatable {
             found.append("The event tap checks did not run.")
         }
         problems = found
+        way = found.isEmpty ? chosen : nil
     }
 }

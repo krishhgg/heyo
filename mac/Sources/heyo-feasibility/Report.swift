@@ -27,8 +27,8 @@ struct Report: Codable {
         if latency == nil || tap == nil {
             lines.append("Only part of the experiment ran, so there is no verdict. Run `heyo-feasibility all`.")
             lines.append(contentsOf: problems.map { "- \($0)" })
-        } else if problems.isEmpty {
-            lines.append("Go. Every check stayed inside the plan's limits.")
+        } else if let way = verdict.way {
+            lines.append("Go, by \(way.rawValue). Every check it needs stayed inside the plan's limits.")
         } else {
             lines.append("No-go as built. The plan's stop conditions were hit:")
             lines.append(contentsOf: problems.map { "- \($0)" })
@@ -53,11 +53,11 @@ struct Report: Codable {
         return lines.joined(separator: "\n") + "\n"
     }
 
-    func write(to folder: String) {
+    func write(to folder: String) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
-        try? encoder.encode(self).write(to: URL(fileURLWithPath: folder + "/report.json"))
-        try? markdown.write(toFile: folder + "/report.md", atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        try encoder.encode(self).write(to: URL(fileURLWithPath: folder + "/report.json"))
+        try markdown.write(toFile: folder + "/report.md", atomically: true, encoding: .utf8)
     }
 }

@@ -39,24 +39,36 @@ func milliseconds(_ body: () -> Void) -> Double {
     return Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
 }
 
-/// The frame of an app's frontmost window in screen points, top-left origin, or nil.
-func frontWindowFrame(of app: NSRunningApplication) -> CGRect? {
+enum FrontWindow {
+    case frame(CGRect)
+    /// The app answered and has no window to click in.
+    case none
+    /// The app did not answer, or answered with an error.
+    case failed
+}
+
+/// The frame of an app's frontmost window in screen points, top-left origin.
+func frontWindow(of app: NSRunningApplication) -> FrontWindow {
     let element = AXUIElementCreateApplication(app.processIdentifier)
     AXUIElementSetMessagingTimeout(element, 0.5)
     var windows: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(element, kAXWindowsAttribute as CFString, &windows) == .success,
-          let window = (windows as? [AXUIElement])?.first else { return nil }
+    switch AXUIElementCopyAttributeValue(element, kAXWindowsAttribute as CFString, &windows) {
+    case .success: break
+    case .noValue: return .none
+    default: return .failed
+    }
+    guard let window = (windows as? [AXUIElement])?.first else { return .none }
     var position: CFTypeRef?
     var size: CFTypeRef?
     guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &position) == .success,
-          AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &size) == .success else { return nil }
+          AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &size) == .success else { return .failed }
     var origin = CGPoint.zero
     var extent = CGSize.zero
     // swiftlint:disable:next force_cast
     AXValueGetValue(position as! AXValue, .cgPoint, &origin)
     // swiftlint:disable:next force_cast
     AXValueGetValue(size as! AXValue, .cgSize, &extent)
-    return CGRect(origin: origin, size: extent)
+    return .frame(CGRect(origin: origin, size: extent))
 }
 
 enum HitResult {
@@ -87,12 +99,28 @@ func measureLatency() -> [AppLatency] {
 
     let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
     for app in apps {
-        guard let frame = frontWindowFrame(of: app), frame.width > 100, frame.height > 100 else { continue }
-        let element = AXUIElementCreateApplication(app.processIdentifier)
-        AXUIElementSetMessagingTimeout(element, Float(budgetMs / 1000))
+        let name = app.localizedName ?? "unknown"
         let bundlePath = app.bundleURL?.path ?? ""
         let electron = FileManager.default.fileExists(
             atPath: bundlePath + "/Contents/Frameworks/Electron Framework.framework")
+        let frame: CGRect
+        switch frontWindow(of: app) {
+        case .none: continue
+        case let .frame(found):
+            guard found.width > 100, found.height > 100 else { continue }
+            frame = found
+        case .failed:
+            // An app that cannot say where its window is was not measured. It stays
+            // in the report, so that it cannot go missing behind an app that answered.
+            say("\(name): did not answer when asked for its window. Not measured.")
+            results.append(AppLatency(
+                app: name, bundle: app.bundleIdentifier ?? "", isElectron: electron,
+                hitTestP50: 0, hitTestP95: 0, hitTestMax: 0, timeouts: 0, errors: 0, answered: 0,
+                ringP50: nil, ringP95: nil, ringCoverage: 0))
+            continue
+        }
+        let element = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(element, Float(budgetMs / 1000))
         var single: [Double] = []
         var rings: [Double] = []
         var timeouts = 0
@@ -120,7 +148,6 @@ func measureLatency() -> [AppLatency] {
                 }
             })
         }
-        let name = app.localizedName ?? "unknown"
         let one = Timing(single)
         let ring = Timing(rings)
         let coverage = ringTests > 0 ? Double(ringAnswered) / Double(ringTests) : 0

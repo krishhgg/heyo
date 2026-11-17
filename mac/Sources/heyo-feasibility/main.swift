@@ -67,6 +67,12 @@ if command == "latency" || command == "all" {
 if command == "tap" || command == "all" {
     report.tap = runTapExperiment()
 }
-report.write(to: outDir)
+do {
+    try report.write(to: outDir)
+} catch {
+    // Without the files there is no evidence, whatever the run found.
+    say("Could not write the report to \(outDir): \(error.localizedDescription)")
+    exit(4)
+}
 say("Wrote report.json and report.md to \(outDir)")
 exit(report.verdictIsGo ? 0 : 1)
