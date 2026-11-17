@@ -112,6 +112,8 @@ describe('the decision lint', () => {
       `(() => { const m = Math; return m.random(); })()`,
       `(() => { const { random } = Math; return random(); })()`,
       `[Math][0].random()`,
+      `(Math.valueOf() as { random(): number }).random()`,
+      `Math.toString()`,
       `(() => 0).constructor('return Math.random()')()`,
       `(() => 0)['constructor']('return 1')()`,
     ]) {

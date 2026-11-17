@@ -67,6 +67,33 @@ const FORBIDDEN_NAMES = new Set([
   'SharedArrayBuffer',
 ]);
 
+/** The members of Math a decision may use. Each gives the same answer for the same input. */
+const MATH_MEMBERS = new Set([
+  'abs',
+  'min',
+  'max',
+  'hypot',
+  'sqrt',
+  'cbrt',
+  'floor',
+  'ceil',
+  'round',
+  'trunc',
+  'sign',
+  'pow',
+  'exp',
+  'log',
+  'log2',
+  'log10',
+  'sin',
+  'cos',
+  'tan',
+  'atan',
+  'atan2',
+  'PI',
+  'E',
+]);
+
 /** Property names that lead from any value to code the lint cannot see. */
 const HIDDEN_DOORS = new Set(['constructor', '__proto__', 'prototype']);
 
@@ -161,13 +188,18 @@ function lintFile(
           `Use of "${node.text}". A decision is a pure function of the click's features.`,
         );
     }
+    // Only the arithmetic of Math. Math.random is the obvious way out, and an
+    // inherited member such as Math.valueOf hands back the whole object.
     if (
       ts.isPropertyAccessExpression(node) &&
       ts.isIdentifier(node.expression) &&
       node.expression.text === 'Math' &&
-      node.name.text === 'random'
+      !MATH_MEMBERS.has(node.name.text)
     ) {
-      report(node, 'Math.random. A decision must give the same answer for the same click.');
+      report(
+        node,
+        `Math.${node.name.text}. A decision must give the same answer for the same click.`,
+      );
     }
     // Math is only ever written as Math.<name>. Any other use, such as
     // Math['random'], an alias or a destructuring, could reach random unseen.

@@ -12,8 +12,10 @@ npm run loop -- --log heyo-log.json --agent "<command>" --rounds 5
 
 ```bash
 npm run loop -- --log ~/Downloads/heyo-log-2026-12-01.json --rounds 5 \
-  --agent 'claude -p "Read TASK.md in this folder and do what it says." --permission-mode acceptEdits'
+  --agent 'claude -p "Read TASK.md in this folder and do what it says." --allowedTools "Read Edit Write Bash(./score:*) Bash(./lint:*)"'
 ```
+
+The agent has to be allowed to edit files and to run `./score` and `./lint`, and nothing else. An agent that may edit but not run the two scripts cannot measure a change, and it makes none.
 
 Options:
 
