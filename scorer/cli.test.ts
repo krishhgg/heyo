@@ -158,7 +158,7 @@ describe('a decision under the scorer', () => {
     const { stdout } = await scorer('score', logFile, '--decision', folder, '--json');
     const { answers } = JSON.parse(stdout) as { answers: Record<string, number> };
     expect(Object.keys(answers)).toEqual([
-      'refuse: blurred,candidates,churn,focused,leftField,listenersOnPath,mutations,path,point,press,reacted,reaction,topFrame,under,viewport',
+      'refuse: blurred,candidates,churn,focused,leftField,listenersOnPath,mutations,path,point,press,reacted,reaction,scale,topFrame,under,viewport',
     ]);
   });
 

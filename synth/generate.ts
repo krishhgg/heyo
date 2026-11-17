@@ -579,6 +579,7 @@ export function generate(options: SynthOptions = DEFAULT_OPTIONS): LogExport {
       },
       point: { x: Math.round(rng.uniform(40, 1240)), y: Math.round(rng.uniform(40, 760)) },
       viewport: { w: 1280, h: 800 },
+      scale: 2,
       topFrame: !rng.chance(0.05),
       listenersOnPath: rng.int(0, 3),
     };
