@@ -25,8 +25,9 @@ struct AppLatency: Codable {
     var errors: Int
     /// Hit tests that got an answer.
     var answered: Int
-    /// The whole ring search around one point, 137 hit tests, in ms. Every search
-    /// is timed, also one whose hit tests timed out, since that time was spent.
+    /// The whole search for one press, in ms: the hit test at the click point and
+    /// the 136 on the ring around it. Every search is timed, also one whose hit
+    /// tests timed out, since that time was spent.
     var ringP50: Double?
     var ringP95: Double?
     /// Share of the ring searches' hit tests that got an answer, from 0 to 1.
@@ -138,9 +139,11 @@ func measureLatency() -> [AppLatency] {
             case .timedOut: timeouts += 1
             case .failed: errors += 1
             }
-            // The full ring search on every third point.
+            // The full search on every third point: the click point, timed above, and the ring around it.
             guard sample % 3 == 0 else { continue }
-            rings.append(milliseconds {
+            ringTests += 1
+            if one.result == .answered { ringAnswered += 1 }
+            rings.append(one.ms + milliseconds {
                 for offset in offsets {
                     let hit = hitTest(element, at: CGPoint(x: point.x + offset.dx, y: point.y + offset.dy))
                     ringTests += 1

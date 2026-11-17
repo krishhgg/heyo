@@ -255,7 +255,11 @@ func runTapExperiment() -> TapReport {
         // A press that turns into a drag. The decision was made at the press, so
         // each way has to give the drag back where the user pressed.
         func dragFromTheMiss(_ mode: TapMode, _ check: Verdict.Check) {
-            reset(mode, zone: zone, target: middle)
+            // The title-bar check moves the window, so the button is found again each time.
+            let button = onMain { probe.buttonRect }
+            let miss = CGPoint(x: button.maxX + 4, y: button.midY)
+            let zone = CGRect(x: button.maxX, y: button.minY, width: 12, height: button.height)
+            reset(mode, zone: zone, target: CGPoint(x: button.midX, y: button.midY))
             drag(from: miss, by: 60)
             let log = onMain { probe.view.log }
             let dragged = log.first?.hasPrefix("down") == true && log.contains("dragged") && log.last?.hasPrefix("up") == true
