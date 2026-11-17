@@ -1,13 +1,16 @@
 // The numbers the plan steers by, computed from a log and a decision function.
 import { daysBetween } from './days';
-import { isDoublePress, isLabeledMiss, isMaskedMiss, wasSent } from './labels';
+import { isDoublePress, isMaskedMiss, missWeight, wasSent } from './labels';
 import { upperBound } from './stats';
 import type { ClickRecord, DayCount, Decide, Review } from './types';
 
 export interface Score {
   /** Empty-space click records scored. */
   records: number;
-  /** Labeled misses among them. */
+  /**
+   * Labeled misses among them. A miss held back as a control counts for the
+   * fires that were sent on in its place, so this can be more than the records.
+   */
   misses: number;
   /** Labeled misses where the decision picked the control the user then clicked. */
   recovered: number;
@@ -73,11 +76,11 @@ export function score(records: ClickRecord[], reviews: Review[], decide: Decide)
     }
     const decision = decide(record.features);
     const picked = decision.action === 'retarget' ? decision.candidate : null;
-    const miss = isLabeledMiss(record);
-    if (miss) {
-      result.misses++;
-      if (picked !== null && picked === record.followUp?.candidate) result.recovered++;
-      else if (picked !== null) result.proxyWrong++;
+    const weight = missWeight(record);
+    if (weight > 0) {
+      result.misses += weight;
+      if (picked !== null && picked === record.followUp?.candidate) result.recovered += weight;
+      else if (picked !== null) result.proxyWrong += weight;
     }
     if (picked === null) continue;
     result.fires++;
@@ -119,7 +122,7 @@ export function missRate(records: ClickRecord[], counts: DayCount[], today: stri
   const first = days[0];
   const last = days.at(-1);
   const clicks = counts.reduce((sum, c) => sum + c.clicks, 0);
-  const misses = records.filter(isLabeledMiss).length;
+  const misses = records.reduce((sum, record) => sum + missWeight(record), 0);
   return {
     elapsedDays: first && last ? daysBetween(first, today > last ? today : last) + 1 : 0,
     activeDays: days.length,

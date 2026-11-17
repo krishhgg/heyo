@@ -80,13 +80,39 @@ describe('score', () => {
     const sent = record(two, hit(0, 4), { fire: { outcome: 'sent', reacted: true } });
     const ignored = record(two, null, { fire: { outcome: 'sent', reacted: false } });
     const held = record(two, hit(0, 4), { fire: { outcome: 'held' } });
+    // The held miss stands for itself and for nine fires that were sent on.
     expect(score([sent, ignored, held], [], nearest)).toMatchObject({
-      misses: 1,
-      recovered: 1,
+      misses: 10,
+      recovered: 10,
       fires: 3,
       sent: 2,
       sentIgnored: 1,
     });
+  });
+
+  it('keeps recovery where it was once retargeting is on and most fires are sent', () => {
+    const far = { candidates: [candidate(0, 20)] };
+    const many = <T>(n: number, make: () => T) => Array.from({ length: n }, make);
+    // Shadow mode: 55% recovered, 5% picked the other control, 40% refused.
+    const shadow = [
+      ...many(275, () => record(two, hit(0, 4))),
+      ...many(25, () => record(two, hit(1, 9))),
+      ...many(200, () => record(far, hit(0, 20))),
+    ];
+    expect(score(shadow, [], nearest).recovery).toBeCloseTo(0.55);
+    // The same person for twice as long with retargeting on. Of 600 fires, 540
+    // are sent on and 60 are held back. The 400 refused misses are logged as before.
+    const on = [
+      ...many(540, () => record(two, null, { fire: { outcome: 'sent' as const, reacted: true } })),
+      ...many(55, () => record(two, hit(0, 4), { fire: { outcome: 'held' as const } })),
+      ...many(5, () => record(two, hit(1, 9), { fire: { outcome: 'held' as const } })),
+      ...many(400, () => record(far, hit(0, 20))),
+    ];
+    const both = score([...shadow, ...on], [], nearest);
+    expect(both.misses).toBe(1500);
+    expect(both.recovery).toBeCloseTo(0.55);
+    // Without the weight this would read 34%, and retargeting would turn itself off.
+    expect((275 + 55) / (500 + 60 + 400)).toBeLessThan(0.35);
   });
 
   it('counts fires followed by a second press in the same spot', () => {

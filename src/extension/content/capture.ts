@@ -306,6 +306,8 @@ export function startCapture(): void {
     const report = (fire: Fire) => send({ type: 'fire', id: record.id, fire });
     if (!control || !candidate) return report({ outcome: 'failed', failure: 'gone' });
     const go = () => {
+      // heyo may have been turned off or removed in chrome://extensions during the wait.
+      if (!chrome.runtime?.id) return stop();
       // Retargeting may have been turned off since the click was planned.
       if (!mayAct(settings, site)) return report({ outcome: 'failed', failure: 'off' });
       // The user may have gone to another window in a way this script did not

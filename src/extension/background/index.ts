@@ -90,7 +90,9 @@ async function gatesPass(): Promise<boolean> {
 async function enforce(): Promise<Settings> {
   const settings = await readSettings();
   if (settings.mode !== 'retarget') return settings;
-  if (!(await gatesPass())) return writeSettings({ mode: 'shadow', offReason: 'gates' });
+  // A log that cannot be read has not passed.
+  const pass = await gatesPass().catch(() => false);
+  if (!pass) return writeSettings({ mode: 'shadow', offReason: 'gates' });
   if (settings.gatedWith === decisionVersion) return settings;
   return writeSettings({ gatedWith: decisionVersion });
 }

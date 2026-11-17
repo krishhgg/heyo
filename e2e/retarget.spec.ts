@@ -744,6 +744,13 @@ test.describe('the retargeting tab', () => {
     await expect(review.getByRole('row', { name: /^Wrong-target rate/ })).toContainText('1 wrong');
     const log = await worker.evaluate(() => heyo.exportLog());
     expect(log.reviews.filter((r) => r.verdict === 'wrong')).toHaveLength(1);
+    expect((await worker.evaluate(() => heyo.readSettings())).wrongReports).toHaveLength(1);
+
+    // A slip can be taken back on the same row, the report with it.
+    await fire.getByRole('button', { name: 'Not wrong' }).click();
+    await expect(fire.getByRole('button', { name: 'Wrong', exact: true })).toBeVisible();
+    await expect(review.getByRole('row', { name: /^Wrong-target rate/ })).toContainText('0 wrong');
+    expect((await worker.evaluate(() => heyo.readSettings())).wrongReports).toHaveLength(0);
   });
 
   test('says why when heyo turned retargeting off by itself', async ({

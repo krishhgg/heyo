@@ -4,10 +4,11 @@
 import type { Point } from '../../core/geometry';
 import { nearestPointInRect } from '../../core/geometry';
 import type { Candidate, Fire } from '../../core/types';
-import { boxOf } from './candidates';
-import { isDisabled, tagOf } from './clickable';
+import { boxOf, isLabelPair } from './candidates';
+import { closestClickable, isDisabled, tagOf } from './clickable';
 import { labelOf, typedText } from './describe';
 import { allShadowRoots, elementAt, isWithin, parentOf } from './dom';
+import { hasListener } from './listeners';
 import { reacted, ReactionWatch } from './reaction';
 
 /**
@@ -110,6 +111,12 @@ export function sendClick(
   );
   const top = elementAt(at.x, at.y);
   if (!top || !isWithin(top, control)) return report(failed('covered'));
+  // A smaller control inside this one, such as the cross on a chip, would take
+  // the click for itself. The click is for the control the decision picked.
+  const taker = closestClickable(top, hasListener)?.element;
+  if (taker && taker !== control && !isLabelPair(taker, control) && isWithin(taker, control)) {
+    return report(failed('covered'));
+  }
 
   const watch = new ReactionWatch([top], [control], allShadowRoots());
   const checkedBefore = checkedOf(control);

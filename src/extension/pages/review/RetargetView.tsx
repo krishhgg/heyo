@@ -180,7 +180,7 @@ export function RetargetView({ log, score, settings, request }: Props) {
         <p class="sheet-note">
           If one of these was not what you meant, say so here. A report is a wrong mark in the gate
           above, so one report turns retargeting off if the gate then fails. It also turns off after
-          more than {GATES.maxWrongPerWeek} in a week, or after one that could not be undone.
+          a second report in a week, or after one that could not be undone.
         </p>
         <table>
           <tbody>
@@ -237,7 +237,27 @@ export function RetargetView({ log, score, settings, request }: Props) {
                   </span>
                 </span>
                 {isWrong(record) ? (
-                  <span class="status status-fail">Marked wrong</span>
+                  <span class="fire-actions">
+                    <span class="status status-fail">Marked wrong</span>
+                    {/* A slip on either button can be taken back here, report and all. */}
+                    <button
+                      class="ghost"
+                      onClick={() =>
+                        record.decision.action === 'retarget' &&
+                        void request({
+                          type: 'review',
+                          review: {
+                            recordId: record.id,
+                            candidate: record.decision.candidate,
+                            verdict: 'right',
+                            t: Date.now(),
+                          },
+                        })
+                      }
+                    >
+                      Not wrong
+                    </button>
+                  </span>
                 ) : (
                   <span class="fire-actions">
                     <button

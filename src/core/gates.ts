@@ -1,4 +1,5 @@
 // The plan's stop conditions and the gates in front of retargeting.
+import { HELD_SHARE } from './labels';
 import type { MissRate, Score } from './metrics';
 import { lowerBound, trialsNeeded } from './stats';
 
@@ -20,7 +21,7 @@ export const GATES = {
   /** Turn retargeting off after more than this many wrong clicks noticed in a week. */
   maxWrongPerWeek: 1,
   /** Share of fires held back as a control once retargeting is on. */
-  heldShare: 0.1,
+  heldShare: HELD_SHARE,
 } as const;
 
 /** Inconclusive means there is not enough evidence yet. It is never a pass. */

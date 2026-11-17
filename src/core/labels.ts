@@ -24,6 +24,21 @@ export function isLabeledMiss(record: ClickRecord): boolean {
   return !record.features.reacted && !wasSent(record) && retriedNearby(record);
 }
 
+/** Share of fires held back as a control once retargeting is on. */
+export const HELD_SHARE = 0.1;
+
+/**
+ * How many labeled misses a record stands for. In shadow mode that is one or
+ * none. With retargeting on, nine fires in ten are sent on and can no longer
+ * be labeled, and the tenth is held back. A held miss stands for itself and
+ * for the nine that were sent, or every number built on misses would sink the
+ * moment retargeting started to work.
+ */
+export function missWeight(record: ClickRecord): number {
+  if (!isLabeledMiss(record)) return 0;
+  return record.fire?.outcome === 'held' ? 1 / HELD_SHARE : 1;
+}
+
 /** True when a follow-up press is a real hit on a control within the miss radius, soon enough. */
 function retriedNearby(record: ClickRecord): boolean {
   const next = record.followUp;
