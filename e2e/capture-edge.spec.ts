@@ -60,7 +60,92 @@ test.describe('web components', () => {
   });
 });
 
+test.describe('closed shadow roots and live components', () => {
+  test('a control known only by its listener inside a closed root is a hit', async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/closed.html');
+    await clickAt(page, 140, 116);
+    expect(await page.evaluate('taps')).toEqual(['pad']);
+    const log = await readLog(worker);
+    expect(log.records).toEqual([]);
+    expect(log.counts[0]).toMatchObject({ clicks: 1, hits: 1 });
+  });
+
+  test('blank space inside a listening host is empty, next to the button it wraps', async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/closed.html');
+    // Inside the host, 6 px left of the button in its closed root.
+    const record = await recordOf(page, worker, 294, 220);
+    expect(record.features.candidates[0]).toMatchObject({
+      tag: 'button',
+      label: 'Inner go',
+      dist: 6,
+    });
+    expect(record.features.candidates).toHaveLength(1);
+  });
+
+  test('an icon slotted into a closed-root button is a hit', async ({ page, worker }) => {
+    await page.goto('/closed.html');
+    const icon = await page.locator('#closed-icon').boundingBox();
+    await clickAt(page, icon!.x + icon!.width / 2, icon!.y + icon!.height / 2);
+    const log = await readLog(worker);
+    expect(log.records).toEqual([]);
+    expect(log.counts[0]).toMatchObject({ clicks: 1, hits: 1 });
+  });
+
+  test('leaving a text field inside a closed root is a reaction', async ({ page, worker }) => {
+    await page.goto('/closed.html');
+    await page.mouse.click(180, 416);
+    const record = await recordOf(page, worker, 296, 476);
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Go on' });
+    expect(record.features).toMatchObject({
+      reacted: true,
+      reaction: { focus: true },
+      leftField: true,
+    });
+  });
+
+  test('a scroll inside a shadow root is a reaction', async ({ page, worker }) => {
+    await page.goto('/closed.html?scroll');
+    const record = await recordOf(page, worker, 296, 616);
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Jump' });
+    expect(record.features).toMatchObject({ reacted: true, reaction: { scroll: true } });
+  });
+
+  test('a counter ticking inside a shadow root is flagged as background change', async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/closed.html?ticker');
+    await page.mouse.move(60, 660);
+    await page.waitForTimeout(400);
+    const record = await recordOf(page, worker, 296, 616);
+    expect(record.features).toMatchObject({
+      reacted: true,
+      reaction: { mutation: true },
+      churn: true,
+    });
+  });
+});
+
 test.describe('tricky pages', () => {
+  test('a page that marks its root element on every press does not look near the click', async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/tricky.html?whatinput');
+    const record = await recordOf(page, worker, 184, 376);
+    expect(record.features).toMatchObject({
+      reacted: true,
+      reaction: { mutation: true },
+      mutations: { total: 1, near: 0 },
+    });
+  });
+
   test('a small panel that handles its children is not itself a control', async ({
     page,
     worker,
@@ -337,6 +422,36 @@ test.describe('typed text in unusual fields', () => {
     await page.goto('/private.html');
   });
 
+  test('in a field that lost focus, on a page with many hidden inputs, is still blanked', async ({
+    page,
+    worker,
+  }) => {
+    await page.locator('#query').fill('hunter2secret');
+    await page.mouse.click(1100, 700); // somewhere blank, so the field loses focus
+    await expect(page.locator('#query')).not.toBeFocused();
+
+    const record = await recordOf(page, worker, 396, 116);
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Search for …', redacted: true });
+    expect(JSON.stringify(await readLog(worker))).not.toContain('hunter2');
+  });
+
+  test('is not confused with the value of a radio button', async ({ page, worker }) => {
+    const record = await recordOf(page, worker, 95, 530); // 5 px left of the radio's label
+    const labels = record.features.candidates.map((c) => [c.tag, c.label, c.redacted]);
+    expect(labels).toContainEqual(['label', 'Monthly', false]);
+    expect(labels).toContainEqual(['input', 'Monthly', false]);
+  });
+
+  test('in a rich text box is blanked where the page repeats it', async ({ page, worker }) => {
+    await page.locator('#title').click();
+    await page.keyboard.type('quarterly-board-notes');
+    await expect(page.locator('#title-echo')).toHaveText('Rename to quarterly-board-notes');
+
+    const record = await recordOf(page, worker, 696, 536);
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Rename to …', redacted: true });
+    expect(JSON.stringify(await readLog(worker))).not.toContain('quarterly');
+  });
+
   test('in a field built from a plain element never reaches the log', async ({ page, worker }) => {
     const record = await recordOf(page, worker, 304, 436);
     expect(record.features.candidates[0]).toMatchObject({ role: 'textbox', label: '' });
@@ -353,6 +468,10 @@ test.describe('typed text in unusual fields', () => {
 
     const record = await recordOf(page, worker, 696, 436);
     expect(record.features.candidates[0]).toMatchObject({ label: 'Find …', redacted: true });
+
+    // The first click took focus out of the field. Its value is still on the page.
+    const again = await recordOf(page, worker, 696, 436);
+    expect(again.features.candidates[0]).toMatchObject({ label: 'Find …', redacted: true });
     expect(JSON.stringify(await readLog(worker))).not.toContain('hidden-shadow');
   });
 });

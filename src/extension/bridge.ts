@@ -21,3 +21,10 @@ export const CLICK_TYPES = [
   'pointerup',
   'dblclick',
 ];
+
+/**
+ * Added to the query event name for a node inside a closed shadow root. An
+ * event that starts there reaches the window naming only the host, so the
+ * main-world script listens for this second name on each closed root itself.
+ */
+export const CLOSED_SUFFIX = ':closed';

@@ -1,7 +1,7 @@
 // Decides whether an element looks clickable, and finds the clickable element
 // a click on a given node would reach.
 import type { ClickSignal } from '../../core/types';
-import { parentOf } from './dom';
+import { parentOf, shadowRootOf } from './dom';
 
 /** Elements whose content heyo cannot see into. A click on one is a real hit. */
 const OPAQUE_TAGS = new Set(['canvas', 'video', 'iframe', 'embed', 'object', 'audio']);
@@ -95,8 +95,15 @@ const MAX_OWN_DESCENDANTS = 60;
 
 /** True when an element wraps something that is clickable in its own right. */
 function wrapsAControl(element: Element, hasListener: HasListener): boolean {
-  if (element.querySelector(INTERACTIVE_SELECTOR)) return true;
-  const descendants = element.getElementsByTagName('*');
+  // A component's controls live in its shadow root, not among its children.
+  const shadow = shadowRootOf(element);
+  if (element.querySelector(INTERACTIVE_SELECTOR) || shadow?.querySelector(INTERACTIVE_SELECTOR)) {
+    return true;
+  }
+  const descendants = [
+    ...element.getElementsByTagName('*'),
+    ...(shadow?.querySelectorAll('*') ?? []),
+  ];
   if (descendants.length > MAX_OWN_DESCENDANTS) return true;
   const ownPointer = hasPointerCursor(element);
   for (const descendant of descendants) {

@@ -36,6 +36,9 @@
     </style>
   </head>
   <body>
+    <!-- Seventy hidden inputs ahead of every real field, the way large forms and tables have them. -->
+    <div id="hidden-inputs"></div>
+
     <!-- Row 1: a search box whose text the page repeats in two button labels. -->
     <input
       id="query"
@@ -67,7 +70,20 @@
     <x-search id="shadow-search" class="at" style="left: 400px; top: 420px"></x-search>
     <button id="shadow-echo" class="at" style="left: 700px; top: 420px">Find nothing</button>
 
+    <!-- Row 5: a radio button whose value matches its label, and a rich text box whose text a button repeats. -->
+    <label id="plan" class="at" style="left: 100px; top: 520px"
+      ><input type="radio" name="plan" value="monthly" /> Monthly</label
+    >
+    <div id="title" class="rich at" style="left: 400px; top: 520px" contenteditable="true"></div>
+    <button id="title-echo" class="at" style="left: 700px; top: 520px">Rename to nothing</button>
+
     <script>
+      document.getElementById('hidden-inputs').innerHTML =
+        '<input type="hidden" value="token" />'.repeat(70);
+      const title = document.getElementById('title');
+      title.addEventListener('input', () => {
+        document.getElementById('title-echo').textContent = `Rename to ${title.textContent}`;
+      });
       document.getElementById('fake-field').textContent = 'typed in a custom field';
       customElements.define(
         'x-search',

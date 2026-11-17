@@ -3,6 +3,7 @@
 // about 50 ms after the click.
 import type { Reaction } from '../../core/types';
 import { allShadowRoots } from './dom';
+import { deepActiveElement, isTextField } from './fields';
 
 interface NavigationLike {
   addEventListener(type: 'navigate', listener: () => void): void;
@@ -13,26 +14,6 @@ const EVERYTHING = { subtree: true, childList: true, attributes: true, character
 
 /** How many DOM changes are checked for being near the click. */
 const NEAR_CHECK_LIMIT = 500;
-
-/** Input types that are buttons or toggles, not text the user types. */
-const NON_TEXT_INPUT_TYPES = new Set([
-  'button',
-  'submit',
-  'reset',
-  'image',
-  'checkbox',
-  'radio',
-  'range',
-  'color',
-  'file',
-]);
-
-/** True for an element the user types or picks a value in. */
-function isTextField(element: unknown): boolean {
-  if (element instanceof HTMLInputElement) return !NON_TEXT_INPUT_TYPES.has(element.type);
-  if (element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) return true;
-  return element instanceof HTMLElement && element.isContentEditable;
-}
 
 /** The visible selection. A bare caret counts as no selection. */
 function selectedText(): string {
@@ -54,20 +35,24 @@ export class ReactionWatch {
   private readonly selectionBefore = selectedText();
   private readonly hrefBefore = location.href;
   private blurred = false;
+  private left = false;
   private stopped = false;
+  /** The text field that had focus at the press, if any. */
+  private readonly fieldBefore: Element | null;
 
   // Chrome moves focus on its own at a press outside a control. It takes focus
   // off the button or link clicked last, and it gives focus to a focusable
   // container around the press, such as a dialog. Neither is the page reacting.
   // Focus arriving anywhere else, or leaving a field the user types in, is.
+  // Leaving a field is checked at the end by comparing the focused element,
+  // because a focus event from inside a closed shadow root names only the host.
   private readonly onFocusIn = (event: FocusEvent) => {
     const target = event.composedPath()[0];
     if (!isTextField(target) && target && this.path.includes(target)) this.blurred = true;
     else this.seen.focus = true;
   };
-  private readonly onFocusOut = (event: FocusEvent) => {
-    if (isTextField(event.composedPath()[0])) this.seen.focus = true;
-    else this.blurred = true;
+  private readonly onFocusOut = () => {
+    this.blurred = true;
   };
   private readonly onScroll = () => {
     this.seen.scroll = true;
@@ -83,11 +68,18 @@ export class ReactionWatch {
   constructor(
     private readonly path: EventTarget[],
     private readonly candidates: Element[],
+    private readonly roots: ShadowRoot[],
   ) {
+    const active = deepActiveElement();
+    this.fieldBefore = isTextField(active) ? active : null;
     this.observer.observe(document, EVERYTHING);
     // A document observer does not see inside shadow roots, and the page can
     // react inside any of them, such as a menu in another component closing.
-    for (const root of allShadowRoots()) this.observer.observe(root, EVERYTHING);
+    // A scroll event inside a shadow root does not leave it either.
+    for (const root of roots) {
+      this.observer.observe(root, EVERYTHING);
+      root.addEventListener('scroll', this.onScroll, true);
+    }
     window.addEventListener('focusin', this.onFocusIn, true);
     window.addEventListener('focusout', this.onFocusOut, true);
     window.addEventListener('scroll', this.onScroll, true);
@@ -102,8 +94,11 @@ export class ReactionWatch {
       this.total++;
       // Past the limit only the total is kept, to bound the work on a page that changes a lot.
       if (this.total > NEAR_CHECK_LIMIT) continue;
+      // The page root is on every press path. A change there says nothing about this click.
+      const isRoot =
+        target === document || target === document.documentElement || target === document.body;
       const near =
-        this.path.includes(target) ||
+        (!isRoot && this.path.includes(target)) ||
         this.candidates.some((element) => element === target || element.contains(target));
       if (near) this.nearCount++;
     }
@@ -127,6 +122,11 @@ export class ReactionWatch {
       window.removeEventListener('hashchange', this.onNavigate, true);
       window.removeEventListener('popstate', this.onNavigate, true);
       this.navigation?.removeEventListener('navigate', this.onNavigate);
+      for (const root of this.roots) root.removeEventListener('scroll', this.onScroll, true);
+      if (this.fieldBefore && deepActiveElement() !== this.fieldBefore) {
+        this.left = true;
+        this.seen.focus = true;
+      }
       // Chrome moves an invisible caret on almost every click outside a field,
       // so only a change to the visible selection counts.
       if (selectedText() !== this.selectionBefore) this.seen.selection = true;
@@ -138,6 +138,11 @@ export class ReactionWatch {
   /** How many DOM changes were seen, and how many were on the press path or a candidate. Read it after stop. */
   get mutations(): { total: number; near: number } {
     return { total: this.total, near: this.nearCount };
+  }
+
+  /** True when focus left a field the user types in. Read it after stop. */
+  get leftField(): boolean {
+    return this.left;
   }
 
   /** True when the press moved focus the way Chrome does on its own. Read it after stop. */
@@ -172,6 +177,8 @@ export class BackgroundWatch {
     if (this.watchingSince !== null) return;
     this.watchingSince = now;
     this.observer.observe(document, EVERYTHING);
+    // A ticker inside a web component changes only its shadow root.
+    for (const root of allShadowRoots()) this.observer.observe(root, EVERYTHING);
     window.setTimeout(this.rest, IDLE_MS);
   }
 

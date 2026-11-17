@@ -1,7 +1,7 @@
 // Runs in the page's own JavaScript world, before any page script. It records
 // which nodes get a click-type listener, and answers the content script's
 // question "does this node have one?".
-import { CLICK_TYPES, INIT_EVENT, READY_EVENT } from '../bridge';
+import { CLICK_TYPES, CLOSED_SUFFIX, INIT_EVENT, READY_EVENT } from '../bridge';
 
 // The page can replace or patch any built-in later. Everything the wrapper
 // needs is taken now, before page code runs, so the page cannot break it.
@@ -12,6 +12,8 @@ const { add: weakAdd, has: weakHas } = WeakSet.prototype;
 const { has: setHas } = Set.prototype;
 // eslint-disable-next-line @typescript-eslint/unbound-method
 const nativeAdd = EventTarget.prototype.addEventListener;
+// eslint-disable-next-line @typescript-eslint/unbound-method
+const nativeAttach = Element.prototype.attachShadow;
 
 const clickTypes = new Set<unknown>(CLICK_TYPES);
 const handlerProperties = CLICK_TYPES.map((type) => `on${type}`);
@@ -19,9 +21,17 @@ const handlerProperties = CLICK_TYPES.map((type) => `on${type}`);
 /** Nodes that have had a click-type listener added. A removed listener is not forgotten. */
 const listened = new WeakSet<object>();
 
+/** The query event name, once the content script has handed it over. */
+let queryName: string | null = null;
+
 /** Adds heyo's own listener without recording it. */
-function listen(type: string, listener: (event: Event) => void, options: AddEventListenerOptions) {
-  apply(nativeAdd, window, [type, listener, options]);
+function listen(
+  type: string,
+  listener: (event: Event) => void,
+  options: AddEventListenerOptions,
+  target: EventTarget = window,
+) {
+  apply(nativeAdd, target, [type, listener, options]);
 }
 
 // A Proxy keeps the function's name and length, and it still prints as native
@@ -37,6 +47,23 @@ EventTarget.prototype.addEventListener = new Proxy(nativeAdd, {
       // Recording must never break the page's own call.
     }
     return apply(target, thisArg, args) as unknown;
+  },
+});
+
+// A query about a node inside a closed shadow root cannot be answered from the
+// window, where the event names only the host. Each closed root gets its own
+// listener when the page creates it.
+Element.prototype.attachShadow = new Proxy(nativeAttach, {
+  apply(target, thisArg: Element, args: [ShadowRootInit]) {
+    const root: ShadowRoot = apply(target, thisArg, args);
+    try {
+      if (queryName !== null && args[0]?.mode === 'closed') {
+        listen(queryName + CLOSED_SUFFIX, onQuery, { capture: true }, root);
+      }
+    } catch {
+      // Listening must never break the page's own call.
+    }
+    return root;
   },
 });
 
@@ -61,7 +88,9 @@ function onInit(event: Event): void {
   event.stopImmediatePropagation();
   event.preventDefault();
   const name: unknown = (event as CustomEvent).detail;
-  if (typeof name === 'string') listen(name, onQuery, { capture: true });
+  if (typeof name !== 'string') return;
+  queryName = name;
+  listen(name, onQuery, { capture: true });
 }
 
 listen(INIT_EVENT, onInit, { capture: true, once: true });

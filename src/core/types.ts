@@ -83,6 +83,12 @@ export interface ClickFeatures {
    */
   blurred: boolean;
   /**
+   * Focus left a field the user types in. This counts as a focus reaction. It
+   * is logged on its own because typing and then missing the next button is a
+   * likely miss, and a later analysis may want to count it.
+   */
+  leftField: boolean;
+  /**
    * How many DOM changes the page made between the press and the settle time,
    * and how many of those touched the element under the pointer, one of its
    * ancestors, or a candidate. A change far from the click is weaker evidence

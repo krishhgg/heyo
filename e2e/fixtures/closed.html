@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>heyo fixture: closed shadow roots and live components</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      .at {
+        position: absolute;
+      }
+      button {
+        width: 80px;
+        height: 32px;
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Row 1: a closed root holding a div that is clickable only through its listener. -->
+    <x-tap id="tap" class="at" style="left: 100px; top: 100px"></x-tap>
+
+    <!-- Row 2: a host that listens for clicks, around a closed root with one button and blank space. -->
+    <x-shell id="shell" class="at" style="left: 100px; top: 200px"></x-shell>
+
+    <!-- Row 3: a closed-root button whose content, an icon with no text, is slotted in from the page. -->
+    <x-closed-button id="closed-button" class="at" style="left: 100px; top: 300px"
+      ><span
+        id="closed-icon"
+        style="display: inline-block; width: 40px; height: 16px; background: #99a"
+      ></span
+    ></x-closed-button>
+
+    <!-- Row 4: a text field inside a closed root, and a page button near it. -->
+    <x-closed-field id="closed-field" class="at" style="left: 100px; top: 400px"></x-closed-field>
+    <button id="near-closed-field" class="at" style="left: 300px; top: 460px">Go on</button>
+
+    <!-- Row 5: an open root with a scrolling box and a counter, and a page button near it. -->
+    <x-live id="live" class="at" style="left: 100px; top: 540px"></x-live>
+    <button id="near-live" class="at" style="left: 300px; top: 600px">Jump</button>
+
+    <script>
+      const params = new URLSearchParams(location.search);
+      const define = (name, mode, html, setup) =>
+        customElements.define(
+          name,
+          class extends HTMLElement {
+            constructor() {
+              super();
+              const root = this.attachShadow({ mode });
+              root.innerHTML = html;
+              setup?.(root, this);
+            }
+          },
+        );
+      const box = 'width: 80px; height: 32px; box-sizing: border-box; display: block';
+
+      const taps = [];
+      define('x-tap', 'closed', `<div id="pad" style="${box}; background: #ded"></div>`, (root) => {
+        root.getElementById('pad').addEventListener('click', () => taps.push('pad'));
+      });
+
+      define(
+        'x-shell',
+        'closed',
+        `<div style="position: relative; width: 300px; height: 40px; background: #eee">
+           <button style="position: absolute; left: 200px; top: 4px; ${box}">Inner go</button>
+         </div>`,
+        (root, host) => host.addEventListener('click', () => {}),
+      );
+
+      define('x-closed-button', 'closed', `<button style="${box}"><slot></slot></button>`);
+
+      define(
+        'x-closed-field',
+        'closed',
+        '<input style="width: 160px; height: 32px; box-sizing: border-box; display: block" />',
+      );
+
+      define(
+        'x-live',
+        'open',
+        `<div id="scroller" style="width: 100px; height: 40px; overflow: auto"><div style="height: 400px"></div></div>
+         <span id="count">0</span>`,
+        (root) => {
+          // ?scroll makes any click outside a button scroll the box inside this root.
+          if (params.has('scroll')) {
+            document.addEventListener('click', (event) => {
+              if (!event.target.closest('button')) root.getElementById('scroller').scrollTop = 100;
+            });
+          }
+          // ?ticker makes the counter inside this root change on its own, 50 times a second.
+          if (params.has('ticker')) {
+            let n = 0;
+            setInterval(() => (root.getElementById('count').textContent = String(n++)), 20);
+          }
+        },
+      );
+    </script>
+  </body>
+</html>

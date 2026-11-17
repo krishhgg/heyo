@@ -1,5 +1,5 @@
 // Asks the main-world script whether the page put a click-type listener on a node.
-import { INIT_EVENT, READY_EVENT } from '../bridge';
+import { CLOSED_SUFFIX, INIT_EVENT, READY_EVENT } from '../bridge';
 import { uuid } from './uuid';
 
 const queryEvent = `heyo:${uuid()}`;
@@ -27,7 +27,15 @@ export function connectListeners(): void {
  * True when the page registered a click-type listener on the node. The
  * main-world script cancels the query event to say yes. Without that script
  * nothing cancels it, and the answer is no.
+ *
+ * A node inside a closed shadow root is asked about with a second event that
+ * stays inside that root, where the main-world script listens for it. A closed
+ * root the page did not create with attachShadow has no such listener, and the
+ * answer there is no.
  */
 export function hasListener(node: EventTarget): boolean {
-  return !node.dispatchEvent(new Event(queryEvent, { cancelable: true, composed: true }));
+  const root = node instanceof Node ? node.getRootNode() : null;
+  const closed = root instanceof ShadowRoot && root.mode === 'closed';
+  const name = closed ? queryEvent + CLOSED_SUFFIX : queryEvent;
+  return !node.dispatchEvent(new Event(name, { cancelable: true, composed: !closed }));
 }

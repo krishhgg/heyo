@@ -4,6 +4,14 @@
 // is typed into a field on the page right now.
 import type { Under } from '../../core/types';
 import { roleOf, tagOf } from './clickable';
+import {
+  deepActiveElement,
+  FIELD_ROLE_SELECTOR,
+  FIELD_SELECTOR,
+  isEditableRegion,
+  isTextField,
+  isTextInput,
+} from './fields';
 
 export const LABEL_MAX = 40;
 
@@ -22,19 +30,6 @@ const MAX_TYPED = 500;
 
 function squash(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
-}
-
-/** ARIA roles for an element the user types into, whatever it is built from. */
-const FIELD_ROLES = new Set(['textbox', 'searchbox', 'combobox']);
-const FIELD_ROLE_SELECTOR = [...FIELD_ROLES].map((role) => `[role~="${role}"]`).join(',');
-
-/** True for an element that holds user input. */
-function isField(element: Element): boolean {
-  const tag = tagOf(element);
-  if (tag === 'input') return !BUTTON_INPUT_TYPES.has((element as HTMLInputElement).type);
-  if (tag === 'textarea' || tag === 'select') return true;
-  if (FIELD_ROLES.has(roleOf(element) ?? '')) return true;
-  return element instanceof HTMLElement && element.isContentEditable;
 }
 
 /**
@@ -71,23 +66,36 @@ function attribute(element: Element, name: string): string {
 }
 
 /**
- * What is typed into the page's inputs and text areas right now. It is used
- * only to blank the same text out of labels and is never stored. Pages often
- * echo a field into a control, such as a button that reads "Search for ...".
+ * What is typed into the page's fields right now, in the document and in the
+ * given shadow roots. It is used only to blank the same text out of labels and
+ * is never stored. Pages often echo a field into a control, such as a button
+ * that reads "Search for ...".
  */
-export function typedText(): string[] {
+export function typedText(roots: ShadowRoot[]): string[] {
   const typed = new Set<string>();
-  const fields = [...document.querySelectorAll('input, textarea')].slice(0, MAX_FIELDS);
-  // The field being typed in can sit inside a shadow root, where the query does not reach.
-  let active = document.activeElement;
-  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
-  if (active && (tagOf(active) === 'input' || tagOf(active) === 'textarea')) fields.push(active);
-  for (const field of fields) {
-    if (!isField(field)) continue;
-    const value = (field as HTMLInputElement | HTMLTextAreaElement).value;
-    const text = squash(value).toLowerCase().slice(0, MAX_TYPED);
+  const add = (value: string) => {
+    const text = squash(value.slice(0, MAX_TYPED * 4))
+      .toLowerCase()
+      .slice(0, MAX_TYPED);
     if (text.length >= MIN_TYPED) typed.add(text);
+  };
+  const read = (element: Element | null): boolean => {
+    if (isTextInput(element)) add(element.value);
+    else if (isEditableRegion(element)) add(element.textContent ?? '');
+    else return false;
+    return true;
+  };
+  // Only fields the user types in count toward the limit. A page can hold
+  // hundreds of hidden inputs, checkboxes and radio buttons.
+  let fields = 0;
+  for (const tree of [document, ...roots]) {
+    for (const element of tree.querySelectorAll(FIELD_SELECTOR)) {
+      if (fields >= MAX_FIELDS) break;
+      if (read(element)) fields++;
+    }
   }
+  // The focused field is read even when it lies past the limit.
+  read(deepActiveElement());
   return [...typed];
 }
 
@@ -119,7 +127,13 @@ function finish(label: string, typed: string[]): Label {
 function rawLabel(element: Element): string {
   const named = attribute(element, 'aria-label') || attribute(element, 'title');
   if (named) return named;
-  if (isField(element)) {
+  const tag = tagOf(element);
+  // A button input's value is the developer's label for it.
+  if (element instanceof HTMLInputElement && BUTTON_INPUT_TYPES.has(element.type)) {
+    return squash(element.value);
+  }
+  // Any other form control or field is named by its label, never by what it holds.
+  if (tag === 'input' || tag === 'textarea' || tag === 'select' || isTextField(element)) {
     const label = (element as Partial<HTMLInputElement>).labels?.[0];
     return (
       (label ? pageText(label, true) : '') ||
@@ -127,7 +141,6 @@ function rawLabel(element: Element): string {
       attribute(element, 'name')
     );
   }
-  if (element instanceof HTMLInputElement) return squash(element.value);
   const text = pageText(element, true);
   if (text) return text;
   const image = element.querySelector('img[alt], svg[aria-label]');

@@ -271,7 +271,11 @@ test.describe('a page that reacts to an empty-space click', () => {
     await page.locator('#field').click();
     const record = await recordOf(page, worker, 296, 476);
     expect(record.features.candidates[0]).toMatchObject({ label: 'Apply' });
-    expect(record.features).toMatchObject({ reacted: true, reaction: { focus: true } });
+    expect(record.features).toMatchObject({
+      reacted: true,
+      reaction: { focus: true },
+      leftField: true,
+    });
   });
 
   test('but not by taking focus off the button the user clicked before', async ({

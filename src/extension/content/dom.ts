@@ -17,11 +17,28 @@ export function shadowRootOf(element: Element): ShadowRoot | null {
 }
 
 /**
+ * The slot an element is assigned to. `assignedSlot` is null for a slot inside
+ * a closed shadow root, so that case is looked up through the host's root.
+ */
+function slotOf(element: Element): HTMLSlotElement | null {
+  if (element.assignedSlot) return element.assignedSlot;
+  const host = element.parentElement;
+  if (!host || host.shadowRoot) return null;
+  const root = shadowRootOf(host);
+  if (!root) return null;
+  for (const slot of root.querySelectorAll('slot')) {
+    if (slot.assignedElements().includes(element)) return slot;
+  }
+  return null;
+}
+
+/**
  * The parent in the flat tree, which is the tree the user sees. A slotted
  * element's parent is its slot, and a shadow root's child's parent is the host.
  */
 export function parentOf(element: Element): Element | null {
-  if (element.assignedSlot) return element.assignedSlot;
+  const slot = slotOf(element);
+  if (slot) return slot;
   if (element.parentElement) return element.parentElement;
   const root = element.getRootNode();
   return root instanceof ShadowRoot ? root.host : null;

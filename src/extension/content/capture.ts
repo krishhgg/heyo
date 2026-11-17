@@ -9,7 +9,7 @@ import { decisionVersion } from '../version';
 import { boxOf, findCandidates, type Found } from './candidates';
 import { isDisabled, tagOf, type HasListener } from './clickable';
 import { describeUnder, labelOf, typedText } from './describe';
-import { deepestAt } from './dom';
+import { allShadowRoots, deepestAt } from './dom';
 import { classifyHit, type Hit } from './hit';
 import { hasListener } from './listeners';
 import { BackgroundWatch, reacted, ReactionWatch } from './reaction';
@@ -51,7 +51,7 @@ interface Press {
     focused: boolean | null;
     features: Omit<
       ClickFeatures,
-      'press' | 'focused' | 'reacted' | 'reaction' | 'blurred' | 'mutations'
+      'press' | 'focused' | 'reacted' | 'reaction' | 'blurred' | 'leftField' | 'mutations'
     >;
   } | null;
 }
@@ -166,6 +166,7 @@ export function startCapture(): void {
       reacted: didReact,
       reaction,
       blurred: p.empty.watch.movedFocusByDefault,
+      leftField: p.empty.watch.leftField,
       mutations: p.empty.watch.mutations,
     };
     const record: ClickRecord = {
@@ -191,6 +192,22 @@ export function startCapture(): void {
   }
 
   /**
+   * True when the page no longer lines up with the first click: the window
+   * scrolled, or a logged candidate has moved. A scroll inside a shadow root
+   * or a scrolling box sends no event this script is sure to see, so the
+   * candidates' own boxes are checked too.
+   */
+  function hasShifted(first: Pending): boolean {
+    if (first.scrolled) return true;
+    const { elements, candidates } = first.found;
+    return elements.some((element, i) => {
+      const logged = candidates[i]?.rect;
+      const now = element.isConnected ? boxOf(element, element, first.x, first.y)?.rect : null;
+      return logged && now && (Math.abs(now.x - logged.x) > 1 || Math.abs(now.y - logged.y) > 1);
+    });
+  }
+
+  /**
    * The logged candidate a later press hit, or null. A page can replace a
    * control with an identical node between the two presses, so a candidate
    * that left the document also matches a control with the same tag, label
@@ -202,10 +219,10 @@ export function startCapture(): void {
     if (exact >= 0) return exact;
     const related = elements.findIndex((e) => e.contains(element) || element.contains(e));
     if (related >= 0) return related;
-    if (first.scrolled) return null;
+    if (hasShifted(first)) return null;
     const box = boxOf(element, target, first.x, first.y);
     if (!box) return null;
-    const label = labelOf(element, typedText()).text;
+    const label = labelOf(element, typedText(allShadowRoots())).text;
     const near = (a: number, b: number) => Math.abs(a - b) <= SAME_BOX_PX;
     const same = candidates.filter(
       (c, i) =>
@@ -228,7 +245,7 @@ export function startCapture(): void {
     if (candidate !== null) {
       // The distance measured at the first click. The control may have moved since.
       dist = first.found.candidates[candidate]?.dist ?? null;
-    } else if (element && !first.scrolled) {
+    } else if (element && !hasShifted(first)) {
       dist = boxOf(element, target, first.x, first.y)?.dist ?? null;
     }
     return {
@@ -275,10 +292,11 @@ export function startCapture(): void {
 
     let empty: Press['empty'] = null;
     if (hit.kind === 'empty') {
-      const typed = typedText();
+      const roots = allShadowRoots();
+      const typed = typedText(roots);
       const found = findCandidates(at.x, at.y, lookup, typed);
       empty = {
-        watch: new ReactionWatch(path, found.elements),
+        watch: new ReactionWatch(path, found.elements, roots),
         found,
         focused: tabFocused(),
         features: {
@@ -320,7 +338,14 @@ export function startCapture(): void {
     if (press.hit.kind === 'control' && control && isDisabled(control)) {
       send({ type: 'count', site, field: 'hits' });
       press = null;
+      return;
     }
+    // The click follows the release at once. A press that gets none, such as
+    // one released outside the window, is dropped so its watch does not run on.
+    const released = press;
+    window.setTimeout(() => {
+      if (press === released) dropPress();
+    }, SETTLE_MS);
   }
 
   function onClick(event: MouseEvent): void {

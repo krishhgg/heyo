@@ -130,6 +130,15 @@ const a = 1;</pre>
         if (event.target.id === 'leave') location.href = '/basic.html';
       });
 
+      // ?whatinput makes the page mark its root element on every press, as input-tracking libraries do.
+      if (params.has('whatinput')) {
+        document.addEventListener(
+          'pointerdown',
+          () => document.documentElement.setAttribute('data-whatinput', 'mouse'),
+          true,
+        );
+      }
+
       // ?ticker makes the page change its own DOM on every frame, like a playing animation.
       if (params.has('ticker')) {
         let n = 0;
