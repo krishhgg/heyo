@@ -56,6 +56,8 @@ export async function loadLogs(files: string[]): Promise<LogExport> {
     }
     logs.push(log as LogExport);
   }
+  // Oldest first, so where two exports hold the same record or day, the later export wins.
+  logs.sort((a, b) => a.exportedAt - b.exportedAt);
   const records = new Map(logs.flatMap((l) => l.records).map((r) => [r.id, r]));
   const reviews = new Map(
     logs

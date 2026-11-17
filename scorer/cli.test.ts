@@ -1,6 +1,6 @@
 // Runs the real scorer command, with the decision in its locked-down child process.
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -106,13 +106,35 @@ describe('the scorer command', () => {
   });
 });
 
+describe('several exports scored together', () => {
+  it('take the later export where two hold the same day, whatever order they are named in', async () => {
+    const log = JSON.parse(await readFile(logFile, 'utf8')) as LogExport;
+    const [first] = log.counts;
+    const older: LogExport = { ...log, exportedAt: log.exportedAt - 86_400_000 };
+    older.counts = [{ ...first!, clicks: 1, hits: 1, emptyReacted: 0, emptyIgnored: 0 }];
+    older.records = [];
+    older.reviews = [];
+    const olderFile = join(dir, 'older.json');
+    await writeFile(olderFile, JSON.stringify(older));
+
+    const clicksOf = async (...files: string[]) => {
+      const { stdout } = await scorer('gates', ...files, '--json');
+      return (JSON.parse(stdout) as { missRate: { clicks: number } }).missRate.clicks;
+    };
+    const alone = await clicksOf(logFile);
+    expect(await clicksOf(olderFile, logFile)).toBe(alone);
+    expect(await clicksOf(logFile, olderFile)).toBe(alone);
+  });
+});
+
 describe('a decision under the scorer', () => {
   it('cannot read files', async () => {
     const folder = await decisionDir(
       'reads',
-      `import { readFileSync } from 'node:fs';
+      // No import: the bundler refuses those. Node hands out its modules without one.
+      `const { readFileSync } = process.getBuiltinModule('node:fs');
        export const decide = () => {
-         readFileSync(${JSON.stringify(join(tmpdir(), 'anything'))});
+         readFileSync(${JSON.stringify(logFile)});
          return { action: 'refuse', reason: 'too-far' };
        };`,
     );
@@ -128,8 +150,8 @@ describe('a decision under the scorer', () => {
     const { port } = server.address() as AddressInfo;
     const folder = await decisionDir(
       'spawns',
-      `import { execSync } from 'node:child_process';
-       import { connect } from 'node:net';
+      `const { execSync } = process.getBuiltinModule('node:child_process');
+       const { connect } = process.getBuiltinModule('node:net');
        let spawn = 'allowed';
        try { execSync('true'); } catch (error) { spawn = error.code; }
        const net = await new Promise((resolve) => {
@@ -144,6 +166,52 @@ describe('a decision under the scorer', () => {
     expect(code).toBe(0);
     const { answers } = JSON.parse(stdout) as { answers: Record<string, number> };
     expect(Object.keys(answers)).toEqual(['refuse: ERR_ACCESS_DENIED ERR_ACCESS_DENIED']);
+  });
+
+  it('cannot import the log, a Node module or a file outside its folder', async () => {
+    // The bundler runs outside the locked-down process, so an import would be read there.
+    const imports = [
+      `import used from ${JSON.stringify(logFile)};`,
+      `import used from '../../log.json';`,
+      `import { readFileSync as used } from 'node:fs';`,
+      `import { score as used } from '../../../scorer/main';`,
+      `const used = await import(${JSON.stringify(logFile)});`,
+    ];
+    for (const [i, line] of imports.entries()) {
+      // The import is used, or TypeScript would drop it before the bundler looked.
+      const folder = await decisionDir(
+        `imports-${i}`,
+        `${line}\nexport const decide = () => ({ action: 'refuse', reason: typeof used });`,
+      );
+      const { code, stderr } = await scorer('score', logFile, '--decision', folder);
+      expect(code, line).toBe(2);
+      expect(stderr, line).toContain('A decision may import only its own .ts files');
+    }
+  });
+
+  it('cannot reach the log through a link inside its folder', async () => {
+    const folder = await decisionDir(
+      'links',
+      `import log from './labels';
+       export const decide = () => ({ action: 'refuse', reason: typeof log });`,
+    );
+    await symlink(logFile, join(folder, 'labels.ts'));
+    const { code, stderr } = await scorer('score', logFile, '--decision', folder);
+    expect(code).toBe(2);
+    expect(stderr).toContain('A decision may import only its own .ts files');
+  });
+
+  it('may import its own files', async () => {
+    const folder = await decisionDir(
+      'split',
+      `import { reason } from './words';
+       export const decide = () => ({ action: 'refuse', reason });`,
+    );
+    await writeFile(join(folder, 'words.ts'), `export const reason = 'too-far';`);
+    const { code, stdout } = await scorer('score', logFile, '--decision', folder, '--json');
+    expect(code).toBe(0);
+    const { answers } = JSON.parse(stdout) as { answers: Record<string, number> };
+    expect(Object.keys(answers)).toEqual(['refuse: too-far']);
   });
 
   it('sees only features, with no site, time, id, follow-up or review', async () => {
