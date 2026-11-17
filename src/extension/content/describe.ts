@@ -95,7 +95,11 @@ export function typedText(roots: ShadowRoot[]): Typed {
   const read = (element: Element | null): boolean => {
     // A chosen file's name is the user's too, and pages repeat it beside the field.
     if (element instanceof HTMLInputElement && element.type === 'file') {
-      for (const file of element.files ?? []) add(file.name);
+      // A folder picked whole can hold thousands of names. Past the limit the
+      // check cannot cover them all.
+      const files = [...(element.files ?? [])];
+      if (files.length > MAX_FIELDS) complete = false;
+      for (const file of files.slice(0, MAX_FIELDS)) add(file.name);
       return false;
     }
     if (isTextInput(element)) add(element.value);

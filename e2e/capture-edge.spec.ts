@@ -794,6 +794,19 @@ test.describe('inline boxes', () => {
   });
 });
 
+test('the margin beside a centered body is empty space, also after scrolling', async ({
+  page,
+  worker,
+}) => {
+  await page.goto('/gutter.html');
+  await page.evaluate(() => window.scrollTo(0, 2000));
+  // 10 px left of the button, outside the body, where the press lands on the page root.
+  const button = await page.locator('#save').boundingBox();
+  const record = await recordOf(page, worker, button!.x - 10, button!.y + 10);
+  expect(record.features.under.tag).toBe('html');
+  expect(record.features.candidates[0]).toMatchObject({ label: 'Save', dist: 10 });
+});
+
 test.describe('scrollbars', () => {
   test.use({ scrollbars: true });
 
@@ -825,6 +838,7 @@ test.describe('scrollbars', () => {
     const width = await page.evaluate(() => document.documentElement.clientWidth);
     expect(width).toBe(1264);
 
+    // Nothing here depends on heyo telling this scrollbar from the page: Chrome sends no click.
     await clickAt(page, width + 10, 300);
     expect(await readLog(worker)).toMatchObject({ records: [], counts: [] });
   });

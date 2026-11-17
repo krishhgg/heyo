@@ -157,6 +157,8 @@ export function startCapture(): void {
     const reaction = p.empty.watch.stop(unloading);
     const didReact = reacted(reaction);
     send({ type: 'count', site, field: didReact ? 'emptyReacted' : 'emptyIgnored' });
+    // The send found the extension gone, reloaded or removed. Nothing more can be logged.
+    if (stopped) return;
     const lone = p.empty.found.candidates.length === 0;
     if (lone && didReact) return;
     const features: ClickFeatures = {

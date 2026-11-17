@@ -95,6 +95,11 @@ export function isOverText(
 /** True when the point is on an element's own scrollbar. */
 function isOnScrollbar(target: Element, x: number, y: number): boolean {
   if (!(target instanceof HTMLElement)) return false;
+  // The page root and the body report the window's size as their inner size and
+  // the document's as their outer size, so the arithmetic below does not hold
+  // for them. Their scrollbar is the window's, and Chrome sends no click for a
+  // press on it, so nothing is logged for it either way.
+  if (target === document.documentElement || target === document.body) return false;
   // Only a box that scrolls has scrollbars. An inline box has no client size at
   // all, so the arithmetic below would take its whole width for a scrollbar.
   if (!isScrollRegion(target) || (target.clientWidth === 0 && target.clientHeight === 0)) {
