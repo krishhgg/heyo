@@ -75,8 +75,6 @@
               if (tag === 'button') element.disabled = true;
               else element.setAttribute('aria-disabled', 'true');
             }
-            // A link here goes nowhere, so a click on one does not leave the page.
-            element.addEventListener('click', (event) => event.preventDefault());
           }
           document.body.append(element);
         }
@@ -84,6 +82,13 @@
         // A page that changes on its own, like a ticker or a playing video's controls.
         if (options.churn) setInterval(() => (status.dataset.tick = String(count++)), 16);
       };
+
+      // A link here goes nowhere. One listener on the document stops it, so no
+      // control has a click listener of its own. A listener is one of the signs
+      // heyo knows a control by, and the scenes test the other signs.
+      document.addEventListener('click', (event) => {
+        if (event.target.closest('a')) event.preventDefault();
+      });
 
       // Some pages do something about a click on empty space: close a menu,
       // clear a highlight, move focus. The scripted run says which this one does.

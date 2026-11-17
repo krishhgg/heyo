@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { candidate, record } from '../src/core/testing';
 import { clicks, DEFAULT_OPTIONS, type Plan } from '../synth/generate';
-import { marksFor, moveBack } from './truth';
+import { marksFor, placeOn } from './truth';
 
 /** The first planned miss aimed at a control, from the generator itself. */
 function aimedMiss(): Plan {
@@ -54,20 +54,48 @@ describe('marksFor', () => {
   });
 });
 
-describe('moveBack', () => {
-  it('moves records, marks and day counts the same whole number of days', () => {
+describe('placeOn', () => {
+  const count = (day: string, site: string, clicks: number) => ({
+    day,
+    site,
+    clicks,
+    hits: clicks - 1,
+    emptyReacted: 0,
+    emptyIgnored: 1,
+  });
+
+  it('moves records, marks and day counts to the day', () => {
     const t = new Date(2026, 10, 3, 9, 30).getTime();
     const log = {
       records: [record({}, null, { t })],
       reviews: [{ recordId: 'r', candidate: 0, verdict: 'right' as const, t }],
+      counts: [count('2026-11-03', 'a.test', 4)],
+    };
+    const moved = placeOn(log, '2026-10-29');
+    expect(moved.records[0]!.t).toBe(new Date(2026, 9, 29, 9, 30).getTime());
+    expect(moved.reviews[0]!.t).toBe(moved.records[0]!.t);
+    expect(moved.counts).toEqual([count('2026-10-29', 'a.test', 4)]);
+    expect(placeOn(log, '2026-11-03')).toEqual(log);
+  });
+
+  it('puts a day played across midnight on one date, and adds its counts', () => {
+    const before = new Date(2026, 10, 3, 23, 58).getTime();
+    const after = new Date(2026, 10, 4, 0, 3).getTime();
+    const log = {
+      records: [record({}, null, { t: before }), record({}, null, { t: after })],
+      reviews: [],
       counts: [
-        { day: '2026-11-03', site: 'a.test', clicks: 4, hits: 3, emptyReacted: 0, emptyIgnored: 1 },
+        count('2026-11-03', 'a.test', 4),
+        count('2026-11-04', 'a.test', 6),
+        count('2026-11-04', 'b.test', 2),
       ],
     };
-    const moved = moveBack(log, 5);
-    expect(moved.records[0]!.t).toBe(t - 5 * 86_400_000);
-    expect(moved.reviews[0]!.t).toBe(t - 5 * 86_400_000);
-    expect(moved.counts[0]).toMatchObject({ day: '2026-10-29', clicks: 4 });
-    expect(moveBack(log, 0)).toEqual(log);
+    const moved = placeOn(log, '2026-10-01');
+    expect(moved.records.map((r) => new Date(r.t).getDate())).toEqual([1, 1]);
+    expect(moved.records.map((r) => new Date(r.t).getHours())).toEqual([23, 0]);
+    expect(moved.counts).toEqual([
+      { day: '2026-10-01', site: 'a.test', clicks: 10, hits: 8, emptyReacted: 0, emptyIgnored: 2 },
+      count('2026-10-01', 'b.test', 2),
+    ]);
   });
 });

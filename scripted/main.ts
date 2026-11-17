@@ -5,13 +5,13 @@ import type { BrowserContext, Worker } from '@playwright/test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { dayOf } from '../src/core/days';
+import { addDays, dayOf } from '../src/core/days';
 import { distanceToRect } from '../src/core/geometry';
 import type { ClickRecord, DayCount, LogExport, Review } from '../src/core/types';
 import { CANDIDATE_RADIUS, clicks, DEFAULT_OPTIONS, type Click } from '../synth/generate';
 import { Random } from '../synth/random';
 import { play, type Played } from './play';
-import { marksFor, moveBack } from './truth';
+import { marksFor, placeOn } from './truth';
 
 export interface Session {
   context: BrowserContext;
@@ -260,6 +260,8 @@ export async function run(
   const server = await tools.serve();
   const work = await mkdtemp(join(tmpdir(), 'heyo-scripted-'));
   const queue = days.map((plan, day) => ({ day, plan }));
+  // Fixed before the first click, so a run that goes past midnight keeps its dates.
+  const lastDay = dayOf(Date.now());
   const results: (DayResult | undefined)[] = [];
   let done = 0;
   try {
@@ -269,8 +271,8 @@ export async function run(
         try {
           for (let next = queue.shift(); next; next = queue.shift()) {
             const result = await playDay(session, server.port, next.plan, tally);
-            // The last simulated day is today, and each earlier one a day further back.
-            results[next.day] = moveBack(result, options.days - 1 - next.day);
+            // The last simulated day is the day the run started, and each earlier one a day further back.
+            results[next.day] = placeOn(result, addDays(lastDay, next.day - (options.days - 1)));
             done++;
             if (done % 7 === 0 || done === options.days) {
               report(`  ${done} of ${options.days} days, ${tally.records} records`);
