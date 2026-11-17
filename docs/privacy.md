@@ -65,7 +65,7 @@ Nothing, unless you choose "Export the log" on the review page. That saves a fil
 ## Permissions
 
 - Running on all sites. heyo has to see a click on whatever page you are on. What it reads from a page, and when, is listed above.
-- Storage. heyo keeps its settings there: whether retargeting is on, whether it waits out a double-click, which clicks in the log you reported as wrong and when, and the version of its decision rule that your log last passed with.
+- Storage. heyo keeps its settings there: whether retargeting is on, whether it waits out a double-click, which clicks in the log you reported as wrong, when, and whether they could not be undone, why heyo last turned retargeting off, and the version of its decision rule that your log last passed with.
 
 ## Changes to pages
 
