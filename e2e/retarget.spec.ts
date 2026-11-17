@@ -687,8 +687,15 @@ test.describe('retargeting stays on only while the log passes the gates', () => 
     await review.goto(`chrome-extension://${extensionId}/review.html`);
     await review.getByRole('button', { name: /Retargeting/ }).click();
     await expect(review.locator('.warning')).toContainText('could not be undone');
-    await review.getByRole('button', { name: 'Not wrong' }).click();
+    await expect(review.locator('.warning')).toContainText('Think twice');
+    // Turning it on with the warning in view settles it. It is not shown again.
+    await review.getByRole('button', { name: 'Turn retargeting on' }).click();
+    await review.getByRole('button', { name: 'Turn retargeting off' }).click();
+    await expect(review.getByRole('heading', { name: 'Retargeting is off' })).toBeVisible();
     await expect(review.locator('.warning')).toHaveCount(0);
+    const [report] = (await settingsOf(worker)).wrongReports;
+    expect(report).toMatchObject({ id: sent!.id });
+    expect(report).not.toHaveProperty('irreversible');
   });
 
   test('keeps both of two wrong reports sent at once', async ({

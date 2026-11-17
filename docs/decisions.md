@@ -249,7 +249,8 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - A held miss moves recovery by ten misses at once, so on a log just over 50% one or two held misses the decision did not recover can turn retargeting off.
 - A click marked wrong on the Retargeting tab can be taken back there with "Not wrong", which also takes its report back. Taking a wrong mark back stores a right mark for that click, since heyo keeps one mark a click and has no way to delete one, so it counts as a reviewed fire in the wrong-target gate.
 - The reason heyo gave for turning retargeting off goes when it no longer holds: the report of a click that could not be undone was taken back, or the reports are back to one a week and the gates pass. Retargeting stays off until the user turns it on.
-- A report of a click that could not be undone is kept until it is taken back, not for a week, and the tab warns about it before the switch also when the report was made while retargeting was off.
+- A report of a click that could not be undone is kept past its week, and the tab warns about it before the switch also when the report was made while retargeting was off. The warning goes when the report is taken back, or when the user turns retargeting on with the warning in view.
+- The tab says the log stopped passing only while it does not pass.
 - heyo gives a reason for turning retargeting off only when it did. A report made while retargeting was already off changes no reason.
 - Every job in the worker fails closed. If a job fails, also halfway, after a mark was stored and before the log could be read again, retargeting turns off, and the tab says heyo could not read or write its log.
 - Deleting the log clears any reason that named a report, since the report goes with the log.

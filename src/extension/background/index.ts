@@ -122,8 +122,12 @@ async function setMode(mode: Settings['mode']): Promise<PageReply> {
   if (mode === 'shadow') {
     return { ok: true, settings: await writeSettings({ mode, offReason: null }) };
   }
-  if (!(await gatesPass())) return { ok: false, settings: await readSettings() };
-  const change = { mode, offReason: null, gatedWith: decisionVersion };
+  const before = await readSettings();
+  if (!(await gatesPass())) return { ok: false, settings: before };
+  // The user has seen the warning about a click that could not be undone and
+  // turned retargeting on all the same, so it is not shown again.
+  const wrongReports = before.wrongReports.map(({ id, t }) => ({ id, t }));
+  const change = { mode, offReason: null, gatedWith: decisionVersion, wrongReports };
   return { ok: true, settings: await writeSettings(change) };
 }
 
