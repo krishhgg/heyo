@@ -1,7 +1,7 @@
 // Shadow mode. Watches plain left clicks, and for each one that lands on empty
 // space logs what was nearby, what the decision would have done, whether the
 // page reacted, and where the next press went. It changes nothing on the page.
-import { FOLLOW_UP_WINDOW_MS } from '../../core/labels';
+import { FOLLOW_UP_WINDOW_MS, MISS_RADIUS_PX } from '../../core/labels';
 import type { ClickFeatures, ClickRecord, FollowUp, PathSample } from '../../core/types';
 import { decide } from '../../decision';
 import type { WorkerMessage } from '../messages';
@@ -49,7 +49,10 @@ interface Press {
     found: Found;
     /** Null in a cross-origin iframe, where focus is read at the click instead. */
     focused: boolean | null;
-    features: Omit<ClickFeatures, 'press' | 'focused' | 'reacted' | 'reaction' | 'blurred'>;
+    features: Omit<
+      ClickFeatures,
+      'press' | 'focused' | 'reacted' | 'reaction' | 'blurred' | 'mutations'
+    >;
   } | null;
 }
 
@@ -62,6 +65,11 @@ interface Pending {
   found: Found;
   /** The page scrolled after the click, so positions no longer line up with it. */
   scrolled: boolean;
+  /**
+   * Set for a click with nothing found nearby. It is logged only if the next
+   * press shows it was a miss on a control the search did not see.
+   */
+  unsent: ClickRecord | null;
 }
 
 function round(value: number): number {
@@ -149,7 +157,8 @@ export function startCapture(): void {
     const reaction = p.empty.watch.stop(unloading);
     const didReact = reacted(reaction);
     send({ type: 'count', site, field: didReact ? 'emptyReacted' : 'emptyIgnored' });
-    if (p.empty.found.candidates.length === 0) return;
+    const lone = p.empty.found.candidates.length === 0;
+    if (lone && didReact) return;
     const features: ClickFeatures = {
       ...p.empty.features,
       press: { ms: Math.round((p.up ?? p.t) - p.t), move: round(p.move) },
@@ -157,6 +166,7 @@ export function startCapture(): void {
       reacted: didReact,
       reaction,
       blurred: p.empty.watch.movedFocusByDefault,
+      mutations: p.empty.watch.mutations,
     };
     const record: ClickRecord = {
       v: 1,
@@ -168,8 +178,16 @@ export function startCapture(): void {
       decisionVersion,
       followUp: null,
     };
-    send({ type: 'record', record });
-    pending = { id: record.id, x: p.x, y: p.y, t: p.t, found: p.empty.found, scrolled: false };
+    if (!lone) send({ type: 'record', record });
+    pending = {
+      id: record.id,
+      x: p.x,
+      y: p.y,
+      t: p.t,
+      found: p.empty.found,
+      scrolled: false,
+      unsent: lone ? record : null,
+    };
   }
 
   /**
@@ -241,11 +259,14 @@ export function startCapture(): void {
 
     if (pending) {
       if (at.t - pending.t <= FOLLOW_UP_WINDOW_MS) {
-        send({
-          type: 'followUp',
-          id: pending.id,
-          followUp: followUpOf(event, hit, target, pending),
-        });
+        const followUp = followUpOf(event, hit, target, pending);
+        if (!pending.unsent) {
+          send({ type: 'followUp', id: pending.id, followUp });
+        } else if (followUp.dist !== null && followUp.dist <= MISS_RADIUS_PX) {
+          // The search found nothing near the first click, yet the user then hit a
+          // control right there. That is a miss on a control heyo could not see.
+          send({ type: 'record', record: { ...pending.unsent, followUp } });
+        }
       }
       pending = null;
     }
@@ -257,7 +278,7 @@ export function startCapture(): void {
       const typed = typedText();
       const found = findCandidates(at.x, at.y, lookup, typed);
       empty = {
-        watch: new ReactionWatch(path),
+        watch: new ReactionWatch(path, found.elements),
         found,
         focused: tabFocused(),
         features: {
@@ -324,6 +345,15 @@ export function startCapture(): void {
     if (pending) pending.scrolled = true;
   }
 
+  /**
+   * The window loses focus when the user clicks into an iframe or another
+   * window. This script never sees that press, so the next one it does see is
+   * not the follow-up to the pending click.
+   */
+  function onBlur(event: FocusEvent): void {
+    if (event.target === window) pending = null;
+  }
+
   /** A page that unloads during the settle time reacted by navigating. */
   function onPageHide(): void {
     finalize(true);
@@ -338,6 +368,7 @@ export function startCapture(): void {
     window.removeEventListener('pointercancel', onPointerCancel, true);
     window.removeEventListener('click', onClick, true);
     window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('blur', onBlur, true);
     window.removeEventListener('pagehide', onPageHide, true);
     background.stop();
     dropPress();
@@ -351,5 +382,6 @@ export function startCapture(): void {
   window.addEventListener('pointercancel', onPointerCancel, true);
   window.addEventListener('click', onClick, true);
   window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+  window.addEventListener('blur', onBlur, true);
   window.addEventListener('pagehide', onPageHide, true);
 }

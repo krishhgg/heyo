@@ -11,6 +11,9 @@ interface NavigationLike {
 
 const EVERYTHING = { subtree: true, childList: true, attributes: true, characterData: true };
 
+/** How many DOM changes are checked for being near the click. */
+const NEAR_CHECK_LIMIT = 500;
+
 /** Input types that are buttons or toggles, not text the user types. */
 const NON_TEXT_INPUT_TYPES = new Set([
   'button',
@@ -45,9 +48,9 @@ export class ReactionWatch {
     scroll: false,
     navigation: false,
   };
-  private readonly observer = new MutationObserver(() => {
-    this.seen.mutation = true;
-  });
+  private readonly observer = new MutationObserver((records) => this.count(records));
+  private total = 0;
+  private nearCount = 0;
   private readonly selectionBefore = selectedText();
   private readonly hrefBefore = location.href;
   private blurred = false;
@@ -75,9 +78,12 @@ export class ReactionWatch {
 
   /**
    * Starts watching. Call it at the press, before the page has handled anything.
-   * `path` is the press's event path.
+   * `path` is the press's event path and `candidates` the elements found near it.
    */
-  constructor(private readonly path: EventTarget[]) {
+  constructor(
+    private readonly path: EventTarget[],
+    private readonly candidates: Element[],
+  ) {
     this.observer.observe(document, EVERYTHING);
     // A document observer does not see inside shadow roots, and the page can
     // react inside any of them, such as a menu in another component closing.
@@ -90,6 +96,19 @@ export class ReactionWatch {
     this.navigation?.addEventListener('navigate', this.onNavigate);
   }
 
+  private count(records: MutationRecord[]): void {
+    this.seen.mutation = true;
+    for (const { target } of records) {
+      this.total++;
+      // Past the limit only the total is kept, to bound the work on a page that changes a lot.
+      if (this.total > NEAR_CHECK_LIMIT) continue;
+      const near =
+        this.path.includes(target) ||
+        this.candidates.some((element) => element === target || element.contains(target));
+      if (near) this.nearCount++;
+    }
+  }
+
   private get navigation(): NavigationLike | undefined {
     return (window as { navigation?: NavigationLike }).navigation;
   }
@@ -99,7 +118,8 @@ export class ReactionWatch {
     if (!this.stopped) {
       this.stopped = true;
       if (unloading) this.seen.navigation = true;
-      if (this.observer.takeRecords().length > 0) this.seen.mutation = true;
+      const rest = this.observer.takeRecords();
+      if (rest.length > 0) this.count(rest);
       this.observer.disconnect();
       window.removeEventListener('focusin', this.onFocusIn, true);
       window.removeEventListener('focusout', this.onFocusOut, true);
@@ -113,6 +133,11 @@ export class ReactionWatch {
       if (location.href !== this.hrefBefore) this.seen.navigation = true;
     }
     return { ...this.seen };
+  }
+
+  /** How many DOM changes were seen, and how many were on the press path or a candidate. Read it after stop. */
+  get mutations(): { total: number; near: number } {
+    return { total: this.total, near: this.nearCount };
   }
 
   /** True when the press moved focus the way Chrome does on its own. Read it after stop. */

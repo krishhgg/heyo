@@ -24,6 +24,9 @@
         cursor: pointer;
         background: #dde;
       }
+      .hover-only:hover {
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
@@ -72,6 +75,33 @@
     >
       <button id="in-leave" class="at" style="left: 110px; top: 14px">Stay</button>
     </div>
+
+    <!-- Row 6: a scrollable code block with a tab stop, a control that shows a pointer cursor only under the pointer, and an icon button with no name. -->
+    <pre
+      id="code"
+      class="at"
+      tabindex="0"
+      style="
+        left: 100px;
+        top: 560px;
+        width: 200px;
+        height: 60px;
+        margin: 0;
+        overflow: auto;
+        background: #eee;
+      "
+    >
+const a = 1;</pre>
+    <div
+      id="hover-only"
+      class="hover-only at"
+      style="left: 400px; top: 560px; width: 80px; height: 32px; background: #dde"
+    >
+      Hover
+    </div>
+    <button id="icon" class="at" style="left: 600px; top: 560px; width: 32px">
+      <svg width="16" height="16"><rect width="16" height="16" /></svg>
+    </button>
 
     <div id="ticker" hidden></div>
 

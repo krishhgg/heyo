@@ -81,6 +81,11 @@ function hasTabStop(element: Element): boolean {
   return value !== null && Number.parseInt(value, 10) >= 0;
 }
 
+function isScrollRegion(element: Element): boolean {
+  const { overflowX, overflowY } = getComputedStyle(element);
+  return [overflowX, overflowY].some((value) => value === 'auto' || value === 'scroll');
+}
+
 function hasPointerCursor(element: Element): boolean {
   return getComputedStyle(element).cursor === 'pointer';
 }
@@ -103,18 +108,34 @@ function wrapsAControl(element: Element, hasListener: HasListener): boolean {
 }
 
 /**
- * A click listener marks an element as clickable only when the element is the
- * thing being clicked. A listener on the page root, on a large region or on a
- * wrapper around other controls is event delegation, and React puts every
- * handler on its root.
+ * True when an element is the thing being clicked and not a region around
+ * other things. The page root, a large region and a wrapper around other
+ * controls are regions.
  */
-function isOwnListener(element: Element, hasListener: HasListener): boolean {
+function isOneControl(element: Element, hasListener: HasListener): boolean {
   if (element === document.documentElement || element === document.body) return false;
-  if (!hasListener(element)) return false;
   const rect = element.getBoundingClientRect();
   const viewport = window.innerWidth * window.innerHeight;
   if (rect.width * rect.height >= viewport * DELEGATE_VIEWPORT_SHARE) return false;
   return !wrapsAControl(element, hasListener);
+}
+
+/**
+ * A click listener marks an element as clickable only when the element is one
+ * control. A listener on a region is event delegation, and React puts every
+ * handler on its root.
+ */
+function isOwnListener(element: Element, hasListener: HasListener): boolean {
+  return hasListener(element) && isOneControl(element, hasListener);
+}
+
+/**
+ * A tab stop marks an element as clickable only when the element is one
+ * control. Sites also give a tab stop to scrollable regions, such as code
+ * blocks, so the keyboard can scroll them.
+ */
+function isOwnTabStop(element: Element, hasListener: HasListener): boolean {
+  return hasTabStop(element) && !isScrollRegion(element) && isOneControl(element, hasListener);
 }
 
 /** The signals an element shows on its own, leaving out the inherited pointer cursor. */
@@ -123,7 +144,7 @@ function ownSignals(element: Element, hasListener: HasListener): ClickSignal[] {
   if (isNative(element)) signals.push('native');
   const role = roleOf(element);
   if (role && CLICKABLE_ROLES.has(role)) signals.push('role');
-  if (hasTabStop(element)) signals.push('tabindex');
+  if (isOwnTabStop(element, hasListener)) signals.push('tabindex');
   if (isOwnListener(element, hasListener)) signals.push('listener');
   return signals;
 }

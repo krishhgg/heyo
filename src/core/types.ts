@@ -83,6 +83,13 @@ export interface ClickFeatures {
    */
   blurred: boolean;
   /**
+   * How many DOM changes the page made between the press and the settle time,
+   * and how many of those touched the element under the pointer, one of its
+   * ancestors, or a candidate. A change far from the click is weaker evidence
+   * that the page answered it.
+   */
+  mutations: { total: number; near: number };
+  /**
    * The DOM was already changing in the 300 ms before the press, so a mutation
    * after it may be the page's own background activity. Null when heyo was not
    * watching for that whole time.
@@ -107,6 +114,7 @@ export type RefuseReason =
   | 'too-far'
   | 'ambiguous'
   | 'disabled'
+  | 'unlabeled'
   | 'irreversible'
   | 'path';
 
@@ -133,7 +141,11 @@ export interface FollowUp {
   dist: number | null;
 }
 
-/** One empty-space click that had at least one candidate nearby. */
+/**
+ * One empty-space click. It had at least one candidate nearby, or it had none
+ * and the user then clicked a control within the miss radius that the search
+ * had not seen.
+ */
 export interface ClickRecord {
   v: 1;
   id: string;

@@ -1,11 +1,15 @@
 // DOM helpers that see through shadow roots and slots.
 
-/** The shadow root of an element, open or closed. */
+/**
+ * The shadow root of an element, open or closed. Chrome lets a content script
+ * read a closed root through an extension API, but the call is slow, so only
+ * custom elements are asked. Their names have a hyphen. A closed root on a
+ * plain element such as a div is not seen.
+ */
 export function shadowRootOf(element: Element): ShadowRoot | null {
   if (element.shadowRoot) return element.shadowRoot;
-  if (!(element instanceof HTMLElement)) return null;
+  if (!(element instanceof HTMLElement) || !element.localName.includes('-')) return null;
   try {
-    // Content scripts may read closed roots through this extension API.
     return chrome.dom.openOrClosedShadowRoot(element);
   } catch {
     return null;
@@ -58,11 +62,7 @@ export function allShadowRoots(): ShadowRoot[] {
     const walker = document.createTreeWalker(tree, NodeFilter.SHOW_ELEMENT);
     while (walker.nextNode()) {
       if (++visited % CLOCK_EVERY === 0 && performance.now() > deadline) return found;
-      const element = walker.currentNode as Element;
-      // Asking the extension API about every element is slow. Only custom
-      // elements, whose names have a hyphen, are asked about a closed root.
-      const root =
-        element.shadowRoot ?? (element.localName.includes('-') ? shadowRootOf(element) : null);
+      const root = shadowRootOf(walker.currentNode as Element);
       if (root) {
         found.push(root);
         trees.push(root);

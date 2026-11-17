@@ -127,6 +127,8 @@ export function decide(features: ClickFeatures): Decision {
     return refuse('ambiguous');
   }
   if (nearest.disabled) return refuse('disabled');
+  // A control with no name cannot be checked for what it does, and a reviewer cannot judge it.
+  if (nearest.label === '') return refuse('unlabeled');
   if (looksIrreversible(nearest)) return refuse('irreversible');
   if (movedAway(features.path, nearest)) return refuse('path');
 

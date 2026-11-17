@@ -67,6 +67,17 @@ test.describe('an empty-space click near a control', () => {
     expect(after!.followUp!.dt).toBeLessThanOrEqual(1500);
   });
 
+  test('gets the second press of a double-click attached', async ({ page, worker }) => {
+    await page.mouse.move(184, 116);
+    await page.mouse.click(184, 116, { clickCount: 2, delay: 20 });
+    await page.waitForTimeout(120);
+
+    const [first, second] = (await readLog(worker)).records;
+    expect(first!.followUp).toMatchObject({ kind: 'empty', dx: 0, dy: 0, candidate: null });
+    expect(first!.followUp!.dt).toBeLessThan(500);
+    expect(second!.followUp).toBeNull();
+  });
+
   test('gets no follow-up from a click that comes after 1.5 seconds', async ({ page, worker }) => {
     const record = await recordOf(page, worker, 184, 116);
     await page.waitForTimeout(1500);
@@ -237,7 +248,12 @@ test.describe('a page that reacts to an empty-space click', () => {
   test('by changing the DOM', async ({ page, worker }) => {
     const record = await recordOf(page, worker, 204, 130);
     expect(record.features.candidates[0]).toMatchObject({ label: 'Menu', dist: 6 });
-    expect(record.features).toMatchObject({ reacted: true, reaction: { mutation: true } });
+    expect(record.features).toMatchObject({
+      reacted: true,
+      reaction: { mutation: true },
+      // The page changed the very element that was clicked.
+      mutations: { total: 1, near: 1 },
+    });
     expect(record.decision).toEqual({ action: 'refuse', reason: 'reacted' });
   });
 
@@ -327,11 +343,17 @@ test('a click inside an iframe is logged under the site the user is on', async (
   await page.goto('/framed.html');
   await page.frameLocator('#frame').locator('#save').waitFor();
 
+  // Focus starts in the page around the frame, as it does when the user was just working there.
+  await page.mouse.click(900, 600);
+
   // The frame sits at 50, 50 and its Save button spans x 60 to 140 inside it.
   const record = await recordOf(page, worker, 194, 126);
   expect(record.site).toBe('127.0.0.1');
   expect(record.features.topFrame).toBe(false);
   expect(record.features.candidates[0]).toMatchObject({ label: 'Save', dist: 4 });
+  // The frame only gains focus from this press. The tab had focus all along.
+  expect(record.features.focused).toBe(true);
+  expect(record.decision).toEqual({ action: 'retarget', candidate: 0 });
 });
 
 test('heyo adds nothing to the page that its scripts or styles could trip over', async ({

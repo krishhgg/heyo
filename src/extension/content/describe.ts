@@ -24,11 +24,16 @@ function squash(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+/** ARIA roles for an element the user types into, whatever it is built from. */
+const FIELD_ROLES = new Set(['textbox', 'searchbox', 'combobox']);
+const FIELD_ROLE_SELECTOR = [...FIELD_ROLES].map((role) => `[role~="${role}"]`).join(',');
+
 /** True for an element that holds user input. */
 function isField(element: Element): boolean {
   const tag = tagOf(element);
   if (tag === 'input') return !BUTTON_INPUT_TYPES.has((element as HTMLInputElement).type);
   if (tag === 'textarea' || tag === 'select') return true;
+  if (FIELD_ROLES.has(roleOf(element) ?? '')) return true;
   return element instanceof HTMLElement && element.isContentEditable;
 }
 
@@ -39,6 +44,7 @@ function isField(element: Element): boolean {
 function isUserText(node: Node): boolean {
   const parent = node.parentElement;
   if (!parent || parent.isContentEditable || tagOf(parent) === 'textarea') return true;
+  if (parent.closest(FIELD_ROLE_SELECTOR)) return true;
   return getComputedStyle(parent).cursor === 'text';
 }
 
@@ -71,8 +77,12 @@ function attribute(element: Element, name: string): string {
  */
 export function typedText(): string[] {
   const typed = new Set<string>();
-  const fields = document.querySelectorAll('input, textarea');
-  for (const field of [...fields].slice(0, MAX_FIELDS)) {
+  const fields = [...document.querySelectorAll('input, textarea')].slice(0, MAX_FIELDS);
+  // The field being typed in can sit inside a shadow root, where the query does not reach.
+  let active = document.activeElement;
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+  if (active && (tagOf(active) === 'input' || tagOf(active) === 'textarea')) fields.push(active);
+  for (const field of fields) {
     if (!isField(field)) continue;
     const value = (field as HTMLInputElement | HTMLTextAreaElement).value;
     const text = squash(value).toLowerCase().slice(0, MAX_TYPED);

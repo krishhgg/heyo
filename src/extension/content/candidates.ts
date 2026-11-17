@@ -6,11 +6,15 @@ import { closestClickable, isDisabled, roleOf, tagOf, type HasListener } from '.
 import { labelOf } from './describe';
 import { elementAt } from './dom';
 
-/** The log keeps candidates out to the labeled-miss radius. */
-const RADII = [2, 4, 6, 8, 10, 12, 15, 18, 21, 24, 27, 30];
+/**
+ * Rings of sample points out to 30 px, the labeled-miss radius. Each sample is
+ * a hit test, which costs more the more elements a page has, so the rings are
+ * as sparse as they can be and still find any control at least 6 px across.
+ */
+const RADII = [3, 6, 9, 12, 16, 20, 25, 30];
 
 /** Px between neighboring sample points along a ring. */
-const SPACING = 4;
+const SPACING = 6;
 
 const MAX_CANDIDATES = 8;
 

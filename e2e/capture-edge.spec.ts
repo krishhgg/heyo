@@ -46,10 +46,17 @@ test.describe('web components', () => {
     expect(record.features).toMatchObject({ reacted: true, reaction: { focus: true } });
   });
 
-  test('a change inside another component is a reaction', async ({ page, worker }) => {
+  test('a change inside another component is a reaction, counted as far from the click', async ({
+    page,
+    worker,
+  }) => {
     const record = await recordOf(page, worker, 296, 416);
     expect(record.features.candidates[0]).toMatchObject({ label: 'Filter' });
-    expect(record.features).toMatchObject({ reacted: true, reaction: { mutation: true } });
+    expect(record.features).toMatchObject({
+      reacted: true,
+      reaction: { mutation: true },
+      mutations: { total: 1, near: 0 },
+    });
   });
 });
 
@@ -152,6 +159,59 @@ test.describe('tricky pages', () => {
       reacted: true,
       reaction: { navigation: true },
     });
+  });
+
+  test('a scrollable code block with a tab stop is not a control', async ({ page, worker }) => {
+    await page.goto('/tricky.html');
+    await clickAt(page, 250, 600); // blank space inside the code block
+    const log = await readLog(worker);
+    expect(log.records).toEqual([]);
+    expect(log.counts[0]).toMatchObject({ clicks: 1, hits: 0, emptyIgnored: 1 });
+  });
+
+  test('a miss on a control the search could not see is logged once the user hits it', async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/tricky.html');
+    // The control shows a pointer cursor only while the pointer is on it.
+    await clickAt(page, 484, 576);
+    expect((await readLog(worker)).records).toEqual([]);
+
+    await clickAt(page, 440, 576);
+    const [record] = (await readLog(worker)).records;
+    expect(record!.features.candidates).toEqual([]);
+    expect(record!.followUp).toMatchObject({ kind: 'control', candidate: null, dist: 4 });
+    expect(record!.decision).toEqual({ action: 'refuse', reason: 'no-candidate' });
+  });
+
+  test('an icon button with no name is refused', async ({ page, worker }) => {
+    await page.goto('/tricky.html');
+    const record = await recordOf(page, worker, 636, 576);
+    expect(record.features.candidates[0]).toMatchObject({ tag: 'button', label: '', dist: 4 });
+    expect(record.decision).toEqual({ action: 'refuse', reason: 'unlabeled' });
+  });
+
+  test('a press in an iframe ends the wait for a follow-up in the page around it', async ({
+    page,
+    worker,
+  }) => {
+    await page.goto('/framed.html');
+    await page.frameLocator('#frame').locator('#save').waitFor();
+    await page.evaluate(() => {
+      const button = document.createElement('button');
+      button.textContent = 'Outside';
+      button.style.cssText =
+        'position: absolute; left: 700px; top: 100px; width: 80px; height: 32px';
+      document.body.append(button);
+    });
+
+    const record = await recordOf(page, worker, 784, 116); // 4 px right of Outside, in the page
+    await page.mouse.click(150, 126); // Save, inside the iframe
+    await clickAt(page, 740, 116); // Outside itself, still within 1.5 seconds
+
+    const after = (await readLog(worker)).records.find((r) => r.id === record.id);
+    expect(after!.followUp).toBeNull();
   });
 
   test('the page still gets every click, untouched', async ({ page }) => {
@@ -269,6 +329,31 @@ test.describe('typed text', () => {
       label: '',
     });
     expect(JSON.stringify(await readLog(worker))).not.toContain('secret typed note');
+  });
+});
+
+test.describe('typed text in unusual fields', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/private.html');
+  });
+
+  test('in a field built from a plain element never reaches the log', async ({ page, worker }) => {
+    const record = await recordOf(page, worker, 304, 436);
+    expect(record.features.candidates[0]).toMatchObject({ role: 'textbox', label: '' });
+    expect(JSON.stringify(await readLog(worker))).not.toContain('custom field');
+  });
+
+  test('in a field inside a shadow root is blanked where the page repeats it', async ({
+    page,
+    worker,
+  }) => {
+    await page.mouse.click(500, 436);
+    await page.keyboard.type('hidden-shadow-words');
+    await expect(page.locator('#shadow-echo')).toHaveText('Find hidden-shadow-words');
+
+    const record = await recordOf(page, worker, 696, 436);
+    expect(record.features.candidates[0]).toMatchObject({ label: 'Find …', redacted: true });
+    expect(JSON.stringify(await readLog(worker))).not.toContain('hidden-shadow');
   });
 });
 

@@ -57,6 +57,11 @@ describe('decide', () => {
     );
   });
 
+  it('refuses a control with no name, such as an icon button without a label', () => {
+    const candidates = [candidate(0, 3, { label: '' })];
+    expect(decide(features({ candidates }))).toEqual(refuse('unlabeled'));
+  });
+
   it('refuses a disabled control', () => {
     const candidates = [candidate(0, 3, { disabled: true })];
     expect(decide(features({ candidates }))).toEqual(refuse('disabled'));

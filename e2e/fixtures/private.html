@@ -62,7 +62,28 @@
       <div class="line"></div>
     </div>
 
+    <!-- Row 4: a field built from a plain element, a search box inside a shadow root, and a button that repeats it. -->
+    <div id="fake-field" class="rich at" style="left: 100px; top: 420px" role="textbox"></div>
+    <x-search id="shadow-search" class="at" style="left: 400px; top: 420px"></x-search>
+    <button id="shadow-echo" class="at" style="left: 700px; top: 420px">Find nothing</button>
+
     <script>
+      document.getElementById('fake-field').textContent = 'typed in a custom field';
+      customElements.define(
+        'x-search',
+        class extends HTMLElement {
+          constructor() {
+            super();
+            const root = this.attachShadow({ mode: 'open' });
+            root.innerHTML =
+              '<input style="width: 200px; height: 32px; box-sizing: border-box; display: block" />';
+            root.querySelector('input').addEventListener('input', (event) => {
+              document.getElementById('shadow-echo').textContent = `Find ${event.target.value}`;
+            });
+          }
+        },
+      );
+
       const query = document.getElementById('query');
       query.addEventListener('input', () => {
         document.getElementById('echo').textContent = `Search for ${query.value || 'nothing'}`;
