@@ -23,7 +23,7 @@ That builds the extension, brings Chrome to the front and puts the folder's path
 2. Turn on Developer mode, top right.
 3. Click Load unpacked, press Cmd+Shift+G, paste, press Enter, then Select.
 
-Without Node, download `heyo-extension-<version>.zip` from the [latest release](https://github.com/krishhgg/heyo/releases/latest), unzip it, and pick that folder in step 3. No release is published yet. Pushing a version tag, such as `v0.1.0`, builds the zip and publishes one.
+Without Node, download `heyo-extension-<version>.zip` from the [latest release](https://github.com/krishhgg/heyo/releases/latest), unzip it, and pick that folder in step 3. Pushing a new version tag builds the zip and publishes another release.
 
 To update, pull, run `npm run install:chrome` again, and click the reload arrow on heyo's card.
 
@@ -87,7 +87,7 @@ npm run package    # dist/heyo-extension-<version>.zip
 
 ## Mac app
 
-`mac/` holds the feasibility experiment for a macOS version. It has not been run yet, because it needs Accessibility permission. [docs/mac-feasibility.md](docs/mac-feasibility.md) says how to run it and how to read the result.
+`mac/` holds the feasibility experiment for a macOS version. It ran once and came out no-go as built, because the Accessibility search around a click took over 30 ms in three apps. [docs/mac-feasibility.md](docs/mac-feasibility.md) has the result, how to run it again and how to read it.
 
 ```bash
 cd mac
