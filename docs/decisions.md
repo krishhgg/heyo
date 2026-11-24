@@ -265,7 +265,13 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 
 ## Launch
 
-- No release is tagged. Publishing is the owner's step, like the upload to the Chrome Web Store. `git tag v0.1.0 && git push origin v0.1.0` runs the release workflow, which builds the zip and attaches it to a GitHub release.
+- v0.1.0 is tagged at 7894cd1, at the owner's go-ahead. The release workflow built the zip and attached it to the [GitHub release](https://github.com/krishhgg/heyo/releases/tag/v0.1.0). The upload to the Chrome Web Store stays the owner's step, since it needs their developer account.
 - The privacy policy lists what heyo reads and does not keep as well as what it stores. A first draft said heyo never reads form fields, and it does, in memory, to blank typed text out of the names it logs.
 - The store listing asks for the Accessibility category and starts as Unlisted, so the listing can be checked before it is public.
 - The store screenshots and the promo tile are made by a script from the built extension, so they can be retaken whenever the pages change.
+
+## Mac experiment
+
+- It ran on the owner's MacBook, not on the Mac mini where it was built. Terminal there already had Accessibility permission, so no setting had to change, and the MacBook had the owner's everyday apps open to measure.
+- One app's name and bundle ID are withheld from the committed report. The rest is as the experiment wrote it, and Prettier skips the folder so it stays that way.
+- The verdict stays no-go, as the experiment's rule says, even though holding the press might hide the search inside the press. Changing the rule after seeing the result would make the experiment mean nothing. The test of searching during the hold waits for the extension's log, as the plan says.

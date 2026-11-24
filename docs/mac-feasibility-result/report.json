@@ -1,0 +1,181 @@
+{
+  "latency" : [
+    {
+      "answered" : 60,
+      "app" : "Finder",
+      "bundle" : "com.apple.finder",
+      "errors" : 0,
+      "hitTestMax" : 2.240375,
+      "hitTestP50" : 0.1925,
+      "hitTestP95" : 0.682333,
+      "isElectron" : false,
+      "ringCoverage" : 1,
+      "ringP50" : 24.05825,
+      "ringP95" : 34.441250000000004,
+      "timeouts" : 0
+    },
+    {
+      "answered" : 60,
+      "app" : "Tailscale",
+      "bundle" : "io.tailscale.ipn.macsys",
+      "errors" : 0,
+      "hitTestMax" : 4.120667,
+      "hitTestP50" : 0.282375,
+      "hitTestP95" : 0.685583,
+      "isElectron" : false,
+      "ringCoverage" : 1,
+      "ringP50" : 36.312709,
+      "ringP95" : 50.459917000000004,
+      "timeouts" : 0
+    },
+    {
+      "answered" : 60,
+      "app" : "ChatGPT",
+      "bundle" : "com.openai.codex",
+      "errors" : 0,
+      "hitTestMax" : 1.277292,
+      "hitTestP50" : 0.211292,
+      "hitTestP95" : 0.334916,
+      "isElectron" : false,
+      "ringCoverage" : 1,
+      "ringP50" : 17.7725,
+      "ringP95" : 41.829584,
+      "timeouts" : 0
+    },
+    {
+      "answered" : 60,
+      "app" : "Slack",
+      "bundle" : "com.tinyspeck.slackmacgap",
+      "errors" : 0,
+      "hitTestMax" : 1.08075,
+      "hitTestP50" : 0.130333,
+      "hitTestP95" : 0.175458,
+      "isElectron" : true,
+      "ringCoverage" : 1,
+      "ringP50" : 20.024334,
+      "ringP95" : 26.996917,
+      "timeouts" : 0
+    },
+    {
+      "answered" : 60,
+      "app" : "Notion",
+      "bundle" : "notion.id",
+      "errors" : 0,
+      "hitTestMax" : 1.027125,
+      "hitTestP50" : 0.111083,
+      "hitTestP95" : 0.172917,
+      "isElectron" : true,
+      "ringCoverage" : 1,
+      "ringP50" : 16.373124,
+      "ringP95" : 24.83575,
+      "timeouts" : 0
+    },
+    {
+      "answered" : 60,
+      "app" : "(name withheld)",
+      "bundle" : "(withheld)",
+      "errors" : 0,
+      "hitTestMax" : 1.672292,
+      "hitTestP50" : 0.120458,
+      "hitTestP95" : 0.748291,
+      "isElectron" : true,
+      "ringCoverage" : 1,
+      "ringP50" : 16.958751,
+      "ringP95" : 23.105999999999998,
+      "timeouts" : 0
+    },
+    {
+      "answered" : 60,
+      "app" : "Terminal",
+      "bundle" : "com.apple.Terminal",
+      "errors" : 0,
+      "hitTestMax" : 0.09925,
+      "hitTestP50" : 0.024959,
+      "hitTestP95" : 0.058,
+      "isElectron" : false,
+      "ringCoverage" : 1,
+      "ringP50" : 4.136500000000001,
+      "ringP95" : 7.553999999999999,
+      "timeouts" : 0
+    },
+    {
+      "answered" : 60,
+      "app" : "Google Chrome",
+      "bundle" : "com.google.Chrome",
+      "errors" : 0,
+      "hitTestMax" : 0.860625,
+      "hitTestP50" : 0.071959,
+      "hitTestP95" : 0.245791,
+      "isElectron" : false,
+      "ringCoverage" : 1,
+      "ringP50" : 7.636792,
+      "ringP95" : 24.591458,
+      "timeouts" : 0
+    },
+    {
+      "answered" : 60,
+      "app" : "Safari",
+      "bundle" : "com.apple.Safari",
+      "errors" : 0,
+      "hitTestMax" : 4.001875,
+      "hitTestP50" : 0.079625,
+      "hitTestP95" : 0.386375,
+      "isElectron" : false,
+      "ringCoverage" : 1,
+      "ringP50" : 10.920792,
+      "ringP95" : 13.499584,
+      "timeouts" : 0
+    }
+  ],
+  "tap" : {
+    "callbackMax" : 0.00425,
+    "callbackP95" : 0.003083,
+    "tests" : [
+      {
+        "detail" : "an active tap for left mouse events is running",
+        "name" : "the active event tap was created",
+        "pass" : true
+      },
+      {
+        "detail" : "a click on the button with the tap off pressed it 1 time(s)",
+        "name" : "posted clicks reach the window",
+        "pass" : true
+      },
+      {
+        "detail" : "a click 4 pt beside the button pressed it 0 more time(s)",
+        "name" : "a near miss does nothing without heyo",
+        "pass" : true
+      },
+      {
+        "detail" : "pressed 1 time(s). The pointer ended at x 374, and the miss was at x 374.",
+        "name" : "rewriting the press's location",
+        "pass" : true
+      },
+      {
+        "detail" : "pressed 1 time(s)",
+        "name" : "holding the press and posting it at the target on release",
+        "pass" : true
+      },
+      {
+        "detail" : "the view got: down 134, dragged, dragged ... up 194. The button was pressed 0 time(s).",
+        "name" : "a held press that becomes a drag",
+        "pass" : true
+      },
+      {
+        "detail" : "the window moved 80 pt of 80 and is still open",
+        "name" : "a title-bar drag that starts beside the close button",
+        "pass" : true
+      },
+      {
+        "detail" : "the view got: nothing. The button was pressed 0 time(s).",
+        "name" : "a rewritten press that becomes a drag",
+        "pass" : false
+      },
+      {
+        "detail" : "the window moved 0 pt of 80 and is still open",
+        "name" : "a title-bar drag that starts beside the close button, with rewriting",
+        "pass" : false
+      }
+    ]
+  }
+}

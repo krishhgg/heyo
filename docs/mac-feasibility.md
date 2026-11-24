@@ -2,11 +2,14 @@
 
 ## Result
 
-Not run yet. The experiment is built and waits for one permission that only a person at the Mac can give.
+No-go as built. It ran once, on 23 November 2026, on the owner's MacBook, from Terminal, which already had Accessibility permission. It measured nine apps, three of them Electron apps. [report.md](mac-feasibility-result/report.md) and [report.json](mac-feasibility-result/report.json) hold the full output, with one app's name withheld.
 
-It needs macOS Accessibility permission to create an active event tap, to query other apps and to post mouse events. The shell this was built from does not have it. A probe run there printed `AXIsProcessTrusted: false`, could not create an active tap, and got error -25211 (API disabled) from an Accessibility hit test. Granting the permission is a change in System Settings that the machine's owner has to make.
+- **The ring search is too slow in three apps.** At the 95th percentile it took 34 ms in Finder, 42 ms in ChatGPT and 50 ms in Tailscale, over the plan's 30 ms limit. A single hit test stays under 1 ms at the 95th percentile in every app. The ring search makes 137 of them one after another, and the sum is what crosses the limit. Each app got 20 ring searches in this one run, so its 95th percentile is the second-slowest of them. Tailscale is over the limit even at the median, at 36 ms. The three Electron apps stayed under it, at 23 to 27 ms.
+- **Holding the press works.** Holding the press and posting it at the target on release delivered one click. A held press that turned into a drag reached the view as an ordinary drag, and a title-bar drag that started beside the close button moved the window 80 pt and left it open.
+- **Rewriting the press cannot be used.** It delivered the click, but both drags that started with a rewritten press broke. The view got no events, and the window did not move.
+- The tap was created, posted clicks arrived, and a near miss did nothing without heyo.
 
-Until it runs, the Mac app stays at this experiment. The plan's rule holds: do not commit to Mac retargeting before these questions have answers.
+By the rule this experiment set before it ran, the Mac app does not go ahead as planned. One way around the slow search is untested. With holding, the only safe way to deliver the click, the search could run while the press is held instead of before it, so some or all of it would fall inside the user's own press. That means holding every press on empty space, not only those with a control nearby. The plan treats the Mac app as a maybe until the extension's own log shows that misses are common, so that test waits for the log.
 
 ## Run it
 
@@ -15,12 +18,12 @@ Until it runs, the Mac app stays at this experiment. The plan's rule holds: do n
 
 ```bash
 cd mac
-swift run -c release heyo-feasibility all --out ../docs/mac-feasibility-result
+swift run -c release heyo-feasibility all --out ../dist/mac-feasibility-result
 ```
 
 It takes about half a minute. For about ten seconds of that it opens a small window, moves the pointer and clicks inside that window. Do not use the mouse during that part. It needs the Command Line Tools and no Xcode.
 
-The command prints each check as it goes, writes `report.md` and `report.json` into the folder, and exits 0 for go and 1 for no-go. If it cannot write the report it says so and exits 4. `heyo-feasibility check` only reports whether the permission is there.
+The command prints each check as it goes, writes `report.md` and `report.json` into the folder, which is git-ignored so a rerun cannot overwrite the committed report, and exits 0 for go and 1 for no-go. If it cannot write the report it says so and exits 4. `heyo-feasibility check` only reports whether the permission is there.
 
 ## What it measures
 
@@ -42,7 +45,7 @@ It also times the tap callback itself.
 
 ## Reading the result
 
-- Go: every app was measured and its ring search stays under 30 ms at the 95th percentile, the tap was created, the two setup checks passed, and one way of delivering the click is safe. A way is safe when it delivers exactly one click and both of its drag checks pass. The report names the way. Anything that did not run or gave no answer makes it no-go.
+- Go: every app was measured and its ring search stays at or under 30 ms at the 95th percentile, the tap callback does too, the tap was created, the two setup checks passed, and one way of delivering the click is safe. A way is safe when it delivers exactly one click and both of its drag checks pass. The report names the way. Anything that did not run or gave no answer makes it no-go.
 - Rewriting is safe: build on it. It adds no delay and holds nothing back.
 - Rewriting delivers the click but breaks a drag: it cannot be used. The decision is made at the press, and a press that turns out to be a drag has already been moved.
 - Only re-posting is safe: the Mac app has to hold presses, and the click arrives when the user lets go.

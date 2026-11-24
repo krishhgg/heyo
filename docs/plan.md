@@ -64,6 +64,8 @@ An active event tap catches left mouse presses, and [`AXUIElementCopyElementAtPo
 - Accessibility queries block on the target app, and macOS disables slow taps ([example](https://github.com/acsandmann/rift/issues/628)). Use a 30 ms query timeout and pass the click through on failure.
 - Electron builds its accessibility tree only on request, at a [performance cost](https://www.electronjs.org/docs/latest/tutorial/accessibility).
 
+The experiment ran on 23 November 2026 and came out no-go. Both ways delivered the click, but only holding the press and posting it on release kept drags intact, and the ring search took over 30 ms at the 95th percentile in three apps. [mac-feasibility.md](mac-feasibility.md) has the result.
+
 ## Main risks and stop conditions
 
 - Stop after two weeks of shadow mode if labeled misses are under 0.5% of clicks or under 3 a day.
