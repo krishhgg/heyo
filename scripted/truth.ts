@@ -1,7 +1,7 @@
 // What the scripted run knows about each click that the log does not: which
 // control the user aimed at. It stands in for the hand review, as the
 // generator's own marks do for a synthetic log.
-import type { Point } from '../src/core/geometry';
+import type { Point, Rect } from '../src/core/geometry';
 import type { ClickRecord, DayCount, LogExport, Review } from '../src/core/types';
 import type { Plan } from '../synth/generate';
 
@@ -13,18 +13,28 @@ const SAME_BOX_PX = 1.5;
  * and any other is wrong. A click meant for empty space has no right target.
  */
 export function marksFor(record: ClickRecord, plan: Plan, origin: Point): Review[] {
+  if (plan.intent !== 'aim' || !plan.target) return marksAt(record, null);
+  const { rect } = plan.target;
+  return marksAt(record, { ...rect, x: origin.x + rect.x, y: origin.y + rect.y });
+}
+
+/**
+ * Review marks for one logged click, given the box of the control the user
+ * aimed at in viewport px, or null when the click was meant for empty space.
+ * The control with that box is right and any other is wrong.
+ */
+export function marksAt(record: ClickRecord, target: Rect | null): Review[] {
   const { point } = record.features;
-  const target = plan.intent === 'aim' ? plan.target : null;
   const near = (a: number, b: number) => Math.abs(a - b) <= SAME_BOX_PX;
   return record.features.candidates
     .filter((candidate) => candidate.kind === 'control')
     .map((candidate) => {
       const isTarget =
         target !== null &&
-        near(point.x + candidate.rect.x, origin.x + target.rect.x) &&
-        near(point.y + candidate.rect.y, origin.y + target.rect.y) &&
-        near(candidate.rect.w, target.rect.w) &&
-        near(candidate.rect.h, target.rect.h);
+        near(point.x + candidate.rect.x, target.x) &&
+        near(point.y + candidate.rect.y, target.y) &&
+        near(candidate.rect.w, target.w) &&
+        near(candidate.rect.h, target.h);
       return {
         recordId: record.id,
         candidate: candidate.id,

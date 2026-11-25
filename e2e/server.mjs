@@ -14,11 +14,14 @@ const types = {
   '.svg': 'image/svg+xml',
 };
 
-/** Starts the fixture server. Port 0 picks a free port. Resolves with the server and its port. */
-export function startFixtureServer(port = 0) {
+/**
+ * Starts the fixture server. Port 0 picks a free port. `root` is the folder it
+ * serves, the fixtures unless given. Resolves with the server and its port.
+ */
+export function startFixtureServer(port = 0, root = fixtures) {
   const server = createServer((req, res) => {
     const path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
-    readFile(join(fixtures, path)).then(
+    readFile(join(root, path)).then(
       (body) => {
         res.writeHead(200, { 'content-type': types[extname(path)] ?? 'application/octet-stream' });
         res.end(body);

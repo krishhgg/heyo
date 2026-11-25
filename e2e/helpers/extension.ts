@@ -16,7 +16,13 @@ export interface ExtensionSession {
 
 export async function launchWithExtension(
   userDataDir: string,
-  options: { headless?: boolean; recordVideoDir?: string; scrollbars?: boolean } = {},
+  options: {
+    headless?: boolean;
+    recordVideoDir?: string;
+    scrollbars?: boolean;
+    /** A real window of this size, at the screen's own pixel ratio, for a person to use. */
+    window?: { width: number; height: number };
+  } = {},
 ): Promise<ExtensionSession> {
   if (!existsSync(`${extensionDir}/manifest.json`)) {
     throw new Error('dist/extension is missing. Run `npm run build` first.');
@@ -25,7 +31,7 @@ export async function launchWithExtension(
     // The chromium channel runs the new headless mode, which supports extensions.
     channel: 'chromium',
     headless: options.headless ?? true,
-    viewport: { width: 1280, height: 800 },
+    viewport: options.window ? null : { width: 1280, height: 800 },
     recordVideo: options.recordVideoDir ? { dir: options.recordVideoDir } : undefined,
     // Playwright hides every scrollbar in headless mode. A test of a press on one needs them.
     ignoreDefaultArgs: options.scrollbars ? ['--hide-scrollbars'] : undefined,
@@ -35,6 +41,7 @@ export async function launchWithExtension(
       // Any *.heyo.test name reaches the local fixture server. Unlike localhost,
       // such a page is not a secure context, which is what a plain HTTP site is.
       '--host-resolver-rules=MAP *.heyo.test 127.0.0.1',
+      ...(options.window ? [`--window-size=${options.window.width},${options.window.height}`] : []),
     ],
   });
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));

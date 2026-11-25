@@ -9,6 +9,7 @@ export default defineConfig({
       'synth/**/*.test.ts',
       'loop/**/*.test.ts',
       'scripted/**/*.test.ts',
+      'practice/**/*.test.ts',
     ],
   },
 });

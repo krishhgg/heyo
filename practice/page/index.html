@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>heyo practice</title>
+    <link rel="stylesheet" href="practice.css" />
+    <!-- The page changes these two rules through the style sheet, never the
+         DOM. The first lights a control, the second shows the count. -->
+    <style id="cue">
+      .c[data-n='none'] {
+        background: var(--lit) !important;
+        border-color: var(--lit-edge) !important;
+        color: var(--lit-ink) !important;
+        box-shadow: inset 0 0 0 1px var(--lit-edge);
+      }
+      #progress::after {
+        content: '';
+      }
+    </style>
+  </head>
+  <body>
+    <header class="bar">
+      <span class="name">heyo practice</span>
+      <span class="prompt" id="prompt">Click the yellow control.</span>
+      <span class="progress" id="progress"></span>
+      <button type="button" class="finish" id="finish" hidden>Finish now</button>
+    </header>
+
+    <main class="intro" id="intro">
+      <h1>Click the yellow control, as fast as you can</h1>
+      <p>
+        One control at a time turns yellow. Click it, and the next one lights up. The page changes
+        every 24 clicks.
+      </p>
+      <p>
+        Go faster than feels comfortable. Some clicks will miss, and those misses are what heyo is
+        here to see. When one misses, do what you would normally do.
+      </p>
+      <p>
+        Use the mouse or trackpad you usually use. It takes about
+        <span id="minutes">8</span> minutes. <b>Finish now</b>, top right, stops early and keeps
+        what you did.
+      </p>
+      <p class="unsaved" id="unsaved" hidden>
+        This page was opened on its own, so nothing will be saved. Start it with
+        <code>npm run practice</code>.
+      </p>
+      <button type="button" class="start" id="start">Start</button>
+    </main>
+
+    <!-- The stage is the only part of the page whose presses are logged. Its
+         padding keeps every control at least 30 px inside it, so a miss beside
+         a control still lands on the stage. -->
+    <div class="stage" id="stage" hidden></div>
+
+    <main class="intro" id="saving" hidden>
+      <h1>Saving</h1>
+      <p>The window closes by itself once your clicks are saved.</p>
+    </main>
+
+    <script src="practice.js"></script>
+  </body>
+</html>

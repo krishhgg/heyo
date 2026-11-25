@@ -32,6 +32,11 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // The practice page's script runs in the browser.
+    files: ['practice/page/**/*.js'],
+    languageOptions: { sourceType: 'script', globals: globals.browser },
+  },
+  {
     // Drives pass functions to worker.evaluate and page.evaluate, which run in the browser.
     files: ['.claude/skills/verify-heyo/scripts/**/*.mjs', 'scripts/store-shots.mjs'],
     languageOptions: { globals: { ...globals.browser, chrome: 'readonly', heyo: 'readonly' } },
