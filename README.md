@@ -55,6 +55,8 @@ npm run gates -- synth.json
 
 `npm run scripted -- --out scripted.json` plays the same synthetic clicks with a real mouse through the built extension, and writes the log the extension kept. Score it the same way.
 
+`npm run practice -- --out practice.json` opens a page for a person to click through as fast as they can, in a browser with the extension loaded. It writes heyo's log with every click marked from the control the page had lit. Score it with `npm run score`.
+
 [docs/scoring.md](docs/scoring.md) explains the report, the held-out split and what a decision can see.
 
 ## Improve the decision with an agent

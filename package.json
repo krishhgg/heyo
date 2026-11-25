@@ -20,6 +20,7 @@
     "gates": "node scorer/cli.mjs gates",
     "synth": "node scorer/cli.mjs synth",
     "scripted": "node scripted/cli.mjs",
+    "practice": "node practice/cli.mjs",
     "loop": "node loop/cli.mjs run",
     "lint:decision": "node loop/cli.mjs lint src/decision",
     "e2e:live": "playwright test --config playwright.live.config.ts",

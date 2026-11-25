@@ -187,6 +187,21 @@ Defaults chosen while building heyo, each with the reason. The plan in [plan.md]
 - With both fixes the two worlds agree click for click. Over three seeds of 24 weeks, every planned click beside a control left a record, apart from about 23 a run at the far end of the 30 px search and one drag a run that was let go inside an iframe. The extension named the same nearest control as the generator in more than 99.9% of records.
 - These fixes moved the numbers a decision is judged by, so each pull request that reports gate numbers says which generator they come from.
 
+## Practice run
+
+- The practice run gets marks on misses that real people make, with no hand review. The page knows which control each click was for, so every candidate gets a mark.
+- It runs in Playwright's Chromium with a fresh profile, not in Chrome. Chrome no longer loads an extension from the command line. A profile of its own also keeps practice clicks out of the everyday log and its Review tab. The run copies heyo's log out of the extension itself, so nobody has to export anything.
+- The page lights the target instead of naming it. A name sends the eye searching first, and in everyday use people know where they are aiming. The aim is what heyo needs measured.
+- No control on the page has a name on the decision's list of irreversible words, so every miss is one the decision may act on.
+- The page never changes after a press that misses, only after a hit. heyo refuses a click when the page changed in the 300 ms before it, and reaching the next lit control usually takes longer than that.
+- Radio buttons have their text beside them, not in a label element. A label makes the text part of the control, and heyo then logs whichever of the two boxes is nearer, which the page cannot match to the lit box.
+- A press and a record are the same click when they are within 100 ms and half a pixel of each other. The page and the extension read the clock and the point in the same press. A record that matches no press, such as one from the start screen, is left out.
+- Only presses on the stage are logged. Its 32 px padding keeps every control more than 30 px inside it, so a miss heyo could log still lands on the stage.
+- The page asks for speed. At a comfortable pace ten minutes would give a handful of misses. The cost is that the misses are not everyday misses, and [scoring.md](scoring.md) says so.
+- A run is 240 hits by default, about 8 minutes. The scene changes every 24 hits, so each of the five comes up twice.
+- Practice logs stay apart from the everyday log and do not count toward the gates, which are about everyday use. A practice log is scored on its own with `npm run score`.
+- The pull-request check plays eight hits with a scripted mouse that misses each lit control by 3 px on its clearest side, and checks that each fire goes to the lit control. It checks the page and the matching, not the decision.
+
 ## Decision
 
 - The decision that ships is the first one tightened. The runner-up has to be four times as far as the nearest control and at least 8 px farther. The nearest control has to be within 7.5 px. The cursor has to have been at least 2 px from the click point in the 300 ms before the press. A page that was changing just before the press is refused, and so is a name long enough to have been cut.

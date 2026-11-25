@@ -81,3 +81,38 @@ The summary it prints is a check on the capture code:
 - `Nearest control the same as the generator simulated`.
 
 The scripted log has the same limit as the synthetic one. Its clicks come from the same guesses about behavior, so it says nothing about how often real people miss. What it adds is that every feature in it was measured by the real extension in a real browser.
+
+## The practice log
+
+`npm run practice` opens a page for a person to click through, in Playwright's Chromium with the built extension and a fresh profile. One control at a time turns yellow, and the person clicks it as fast as they can. The page logs every press and which control was lit. heyo logs what it logs on any site. At the end the run puts the two together and writes heyo's log with a review mark on every candidate: right for the lit control, wrong for any other.
+
+```bash
+npm run build
+npm run practice -- --out practice-1.json                # 240 hits, about 8 minutes
+npm run practice -- --out practice-2.json --trials 60
+npm run score -- practice-1.json practice-2.json
+```
+
+It needs Playwright's Chromium (`npx playwright install chromium`). The window closes by itself at the end. **Finish now**, at the top of the page, stops early and keeps what was done. A window closed by hand keeps heyo's log as of the last tenth hit.
+
+The page has five scenes copied from common layouts. They are a mail list, a project page, an article with inline links and footnotes, a settings list and a calendar. The project page has tabs, a file table and page numbers. Controls sit 2 to 10 px apart, as on real pages.
+
+What a practice log shows:
+
+- How often the decision picks a control other than the one the person aimed at, on misses a person made. Every fire is marked, so the count needs no hand review.
+- Whether the retry label points at the control the person meant. The summary counts the labeled misses whose retry landed on the lit control.
+
+What it does not show:
+
+- How often people miss. The page asks for speed and lights small controls, so misses come far more often than in everyday browsing. A person who knows where the target is and is told to hurry also aims differently from one who is browsing. The marks are true for these clicks, so a wrong-target rate from them checks the decision. It does not measure the decision in everyday use.
+- Wrong fires on deliberate clicks on empty space. Every press on the page is aimed at the lit control.
+
+Score a practice log with `npm run score`, not `npm run gates`. All its records come from one site, `practice.heyo.test`, and the held-out split is drawn by site, so the gates would see either all of a practice log or none of it.
+
+The summary the run prints:
+
+- `Presses`, split into presses on the lit control, on another control and on neither.
+- `Records heyo logged`, and how many matched a press on the page. A record from the start screen matches none and is left out.
+- `Records with the lit control among the candidates`. The others landed more than 30 px from it.
+- `Fires by the decision in this build`, and how many went to the lit control.
+- `Labeled misses`, and how many were retried on the lit control.

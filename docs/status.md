@@ -1,6 +1,6 @@
 # Status
 
-Last updated 23 November 2026.
+Last updated 24 November 2026.
 
 ## What works
 
@@ -8,6 +8,7 @@ Last updated 23 November 2026.
 - **Hand review and export.** The toolbar button opens the review page. The Review tab shows each would-be fire as a drawing and takes a mark from one key. The Numbers tab shows the miss rate, recovery and the wrong-target bound against the plan's limits, exports the log to a file and deletes it.
 - **Installed on Krish's MacBook.** heyo is loaded in a Chrome profile of its own, named heyo, and nowhere else. A test near miss on a local page showed up there as a fire on the Review tab, took a mark, and came through the export and `npm run gates`. The test log was deleted afterwards.
 - **Scoring.** `npm run score` and `npm run gates` judge a decision on an exported log, with the decision kept away from the labels. `npm run synth` writes a synthetic log. `npm run scripted` plays the same clicks through the real extension with a real mouse. [scoring.md](scoring.md) explains the numbers.
+- **Practice run.** `npm run practice` opens a page that lights one control at a time for a person to click as fast as they can, in a browser with the extension loaded. Every click heyo logs there is marked right or wrong from the lit control, so the wrong-target count on real misses needs no hand review. [scoring.md](scoring.md) says what a practice log shows and what it does not.
 - **The agent loop.** `npm run loop` lets a coding agent tune the decision on the train split of a log. On macOS the agent cannot read the held-out split or change the scorer. [agent-loop.md](agent-loop.md) has the command.
 - **The decision.** It passes both of the plan's gates on the held-out split of six 24-week logs, three synthetic and three scripted: recovery from 52.9% to 58.9%, and a wrong-target upper bound from 0.39% to 0.72%. The table is in [decisions.md](decisions.md) under "Decision".
 - **Retargeting.** With the gates passing on the local log, the Retargeting tab unlocks. heyo then sends a missed click on to its target on three sites: en.wikipedia.org, news.ycombinator.com and developer.mozilla.org. Each has a scripted replay test against the live site. heyo turns retargeting off by itself when the log stops passing or cannot be read, after a wrong click that could not be undone, or after more than one wrong click in a week.
@@ -28,4 +29,5 @@ Every gate result so far is on generated clicks. The synthetic and scripted logs
 ## What needs Krish
 
 1. **Use heyo on your MacBook for two weeks.** It is installed in the Chrome profile named heyo. Browse there as usual and mark the fires on the Review tab as they come. Then export the log from the Numbers tab.
-2. **A Chrome Web Store developer account**, which has a one-time fee. Run `npm run package`, upload `dist/heyo-extension-<version>.zip` and paste the fields from [store/listing.md](../store/listing.md). Start it as Unlisted.
+2. **Practice runs.** Run `npm run practice -- --out practice-<name>.json` in the heyo folder on your MacBook, and ask a few other people to do the same. Each run is about 8 minutes. Tell me when there are files to collect.
+3. **A Chrome Web Store developer account**, which has a one-time fee. Run `npm run package`, upload `dist/heyo-extension-<version>.zip` and paste the fields from [store/listing.md](../store/listing.md). Start it as Unlisted.

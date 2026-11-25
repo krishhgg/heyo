@@ -1,0 +1,518 @@
+/* The practice page. The scenes copy the look of ordinary web apps on purpose,
+   since the point is how people miss on pages like the ones they use. Nothing
+   here changes the size or place of a control, and nothing moves on its own. */
+
+:root {
+  --page: #eceef1;
+  --panel: #ffffff;
+  --ink: #1d232b;
+  --muted: #69717c;
+  --line: #d9dde3;
+  --control: #f3f5f8;
+  --control-edge: #c9ced6;
+  --link: #1f5fbf;
+  --lit: #ffd43b;
+  --lit-edge: #c99700;
+  --lit-ink: #1d1a00;
+  font:
+    14px/1.4 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  color: var(--ink);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--page);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 52px;
+  padding: 0 24px;
+  background: var(--ink);
+  color: #fff;
+}
+
+.bar .name {
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.bar .prompt {
+  flex: 1;
+  color: #cfd5dd;
+}
+
+.bar .progress {
+  font-variant-numeric: tabular-nums;
+  color: #cfd5dd;
+}
+
+.bar .finish {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid #5b6572;
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+}
+
+.intro {
+  max-width: 600px;
+  margin: 64px auto;
+  padding: 32px 36px;
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.intro h1 {
+  margin: 0 0 16px;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.intro p {
+  margin: 0 0 12px;
+}
+
+.intro .unsaved {
+  color: #a33a00;
+}
+
+.intro .start {
+  margin-top: 12px;
+  height: 40px;
+  padding: 0 28px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--ink);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+}
+
+.stage {
+  position: relative;
+  width: 1000px;
+  height: 600px;
+  margin: 16px auto;
+  padding: 32px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+/* Controls */
+
+.c {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+
+button.c {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border: 1px solid var(--control-edge);
+  border-radius: 6px;
+  background: var(--control);
+  white-space: nowrap;
+}
+
+button.icon {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 15px;
+}
+
+a.c {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
+input.c {
+  appearance: none;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #8d95a1;
+  border-radius: 3px;
+  background: #fff;
+  vertical-align: middle;
+}
+
+input.c[type='radio'] {
+  border-radius: 50%;
+}
+
+input.c:checked {
+  background: var(--link);
+  border-color: var(--link);
+}
+
+/* Wins over every control style above and below, which all set a background. */
+.c.lit {
+  background: var(--lit) !important;
+  border-color: var(--lit-edge) !important;
+  color: var(--lit-ink) !important;
+  box-shadow: inset 0 0 0 1px var(--lit-edge);
+}
+
+a.c.lit {
+  border-radius: 2px;
+  text-decoration-color: var(--lit-edge);
+}
+
+/* Inbox */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.toolbar .spacer {
+  flex: 1;
+}
+
+.toolbar .count {
+  margin-right: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.toolbar .gap {
+  width: 12px;
+}
+
+.mail {
+  display: grid;
+  grid-template-columns: 16px 22px 150px 1fr 56px 26px 26px;
+  align-items: center;
+  column-gap: 10px;
+  height: 46px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mail .star {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 15px;
+}
+
+.mail .act {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 13px;
+}
+
+.mail .from {
+  font-weight: 600;
+}
+
+.mail .subject {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+.mail .subject b {
+  margin-right: 8px;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.mail .date {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+/* Project */
+
+.crumbs {
+  display: flex;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.project h2 {
+  margin: 10px 0 14px;
+  font-size: 20px;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tabs button.c {
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+}
+
+.files {
+  width: 100%;
+  margin: 12px 0 20px;
+  border-collapse: collapse;
+}
+
+.files td {
+  height: 44px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.files td.size,
+.files td.when {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.files td.tools {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.files td.tools button.c {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.files td.tools .c + .c {
+  margin-left: 4px;
+}
+
+.pages {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pages .c {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+}
+
+.pages .dots {
+  padding: 0 6px;
+  color: var(--muted);
+}
+
+/* Article */
+
+.article {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.article h2 {
+  margin: 0 0 6px;
+  font-size: 24px;
+}
+
+.article .byline {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.article p {
+  margin: 0 0 14px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.article sup a.c {
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 18px;
+}
+
+.chips button.c {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 13px;
+  font-size: 13px;
+}
+
+/* Settings */
+
+.setting {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  min-height: 62px;
+  border-bottom: 1px solid var(--line);
+}
+
+.setting .text {
+  flex: 1;
+}
+
+.setting .label {
+  font-weight: 600;
+}
+
+.setting .hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border-radius: 11px;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #8d95a1;
+}
+
+.switch[aria-checked='true']::after {
+  left: 19px;
+  background: var(--link);
+}
+
+.choices {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.choices span {
+  margin-right: 14px;
+  font-size: 13px;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.stepper button.c {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+}
+
+.stepper output {
+  width: 34px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Calendar */
+
+.calendar {
+  display: flex;
+  gap: 40px;
+}
+
+.month .head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.month .head h2 {
+  margin: 0 10px 0 6px;
+  font-size: 18px;
+}
+
+.month .head .icon {
+  width: 28px;
+  height: 28px;
+}
+
+.weekdays,
+.days {
+  display: grid;
+  grid-template-columns: repeat(7, 46px);
+  gap: 4px;
+}
+
+.weekdays span {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.days button.c {
+  height: 38px;
+  padding: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.days .blank {
+  height: 38px;
+}
+
+.slots h3 {
+  margin: 6px 0 14px;
+  font-size: 15px;
+}
+
+.slots .grid {
+  display: grid;
+  grid-template-columns: repeat(3, 70px);
+  gap: 4px;
+}
+
+.slots button.c {
+  height: 28px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
