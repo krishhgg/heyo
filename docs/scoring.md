@@ -113,6 +113,6 @@ The summary the run prints:
 
 - `Presses`, split into presses on the lit control, on another control and on neither.
 - `Records heyo logged`, and how many matched a press on the page. A record from the start screen matches none and is left out.
-- `Records with the lit control among the candidates`. heyo did not list the lit control in the others, most often because the press was more than 30 px from it.
+- `Records with the lit control among the candidates`. In the others heyo did not list the lit control, for example because the press was more than 30 px from it.
 - `Fires by the decision in this build`, and how many went to the lit control.
 - `Labeled misses`, and how many were retried on the lit control.

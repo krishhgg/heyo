@@ -107,6 +107,15 @@ describe('join', () => {
     expect(log.reviews.find((review) => review.verdict === 'right')?.candidate).toBe(0);
   });
 
+  it('pairs a press with the record nearest in time, whichever comes first in the log', () => {
+    // Two presses at one spot, the first before a control was lit, so the page
+    // logged only the second.
+    const early = logged();
+    const late = logged({ t: early.t + 53 });
+    const { log } = join(exported([early, late]), practice([press(late.t)]));
+    expect(log.records).toEqual([late]);
+  });
+
   it('marks every candidate wrong when the lit control was not among them', () => {
     const r = logged();
     const elsewhere = { x: 900, y: 100, w: 30, h: 30 };

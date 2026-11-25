@@ -35,6 +35,8 @@ const save = typeof window.heyoPracticeSave === 'function' ? window.heyoPractice
 
 const log = { format: 'heyo-practice', v: 1, trials: TRIALS, hits: 0, done: false, presses: [] };
 let lit = null;
+/** The lit control a logged press landed on. Only a click that started there is a hit. */
+let pressedLit = null;
 let scene = 0;
 let running = false;
 
@@ -396,9 +398,11 @@ finishButton.addEventListener('click', finish);
 // page's own on a control is one of the signs heyo knows a control by, and
 // the controls here are known by being buttons, links and inputs.
 document.addEventListener('pointerdown', (event) => {
+  pressedLit = null;
   if (!running || !lit || !event.isTrusted || event.button !== 0) return;
   if (!(event.target instanceof Element) || !stage.contains(event.target)) return;
   const control = event.target.closest('.c');
+  if (control === lit) pressedLit = lit;
   log.presses.push({
     t: Date.now(),
     x: event.clientX,
@@ -415,5 +419,5 @@ document.addEventListener('click', (event) => {
   if (event.target.closest('a')) event.preventDefault();
   // A click from the keyboard has no press behind it.
   if (!running || !event.isTrusted || event.detail === 0) return;
-  if (lit && event.target.closest('.c') === lit) next();
+  if (lit && pressedLit === lit && event.target.closest('.c') === lit) next();
 });

@@ -61,26 +61,32 @@ export interface Tally {
 }
 
 /**
- * The press a record was logged for. heyo logs only presses on empty space.
- * Of those close enough in time and place, the nearest in time wins, so the
- * second press of a quick double-click is not taken for the first.
+ * Pairs each record with the press it was logged for. heyo logs only presses
+ * on empty space. Of the pairs close enough in time and place, the nearest in
+ * time are taken first, and each record and press is used once. A quick
+ * double-click then pairs each of its presses with its own record, even when
+ * the page logged only one of them.
  */
-function pressOf(
-  record: ClickRecord,
-  presses: PracticePress[],
-  used: Set<PracticePress>,
-): PracticePress | null {
-  const { point } = record.features;
-  let best: PracticePress | null = null;
-  for (const press of presses) {
-    if (used.has(press) || press.on !== 'empty') continue;
-    const dt = Math.abs(record.t - press.t);
-    if (dt > SAME_TIME_MS) continue;
-    if (Math.abs(point.x - press.x) > SAME_POINT_PX) continue;
-    if (Math.abs(point.y - press.y) > SAME_POINT_PX) continue;
-    if (!best || dt < Math.abs(record.t - best.t)) best = press;
+function pair(records: ClickRecord[], presses: PracticePress[]): Map<ClickRecord, PracticePress> {
+  const pairs: { record: ClickRecord; press: PracticePress; dt: number }[] = [];
+  for (const record of records) {
+    const { point } = record.features;
+    for (const press of presses) {
+      const dt = Math.abs(record.t - press.t);
+      if (press.on !== 'empty' || dt > SAME_TIME_MS) continue;
+      if (Math.abs(point.x - press.x) > SAME_POINT_PX) continue;
+      if (Math.abs(point.y - press.y) > SAME_POINT_PX) continue;
+      pairs.push({ record, press, dt });
+    }
   }
-  return best;
+  const paired = new Map<ClickRecord, PracticePress>();
+  const used = new Set<PracticePress>();
+  for (const { record, press } of pairs.sort((a, b) => a.dt - b.dt)) {
+    if (paired.has(record) || used.has(press)) continue;
+    paired.set(record, press);
+    used.add(press);
+  }
+  return paired;
 }
 
 /**
@@ -105,13 +111,12 @@ export function join(exported: LogExport, practice: PracticeLog): { log: LogExpo
     labeled: 0,
     labeledRight: 0,
   };
-  const used = new Set<PracticePress>();
+  const paired = pair(exported.records, practice.presses);
   const records: ClickRecord[] = [];
   const reviews: Review[] = [];
   for (const record of exported.records) {
-    const press = pressOf(record, practice.presses, used);
+    const press = paired.get(record);
     if (!press) continue;
-    used.add(press);
     records.push(record);
     tally.matched++;
     const marks = marksAt(record, press.target);
