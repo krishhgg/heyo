@@ -92,6 +92,21 @@ describe('join', () => {
     expect(tally.matched).toBe(1);
   });
 
+  it('takes the press on empty space nearest in time', () => {
+    // A double-click at a change of scene: a hit on the last lit control, then
+    // a press on empty space at the same spot with a new control lit.
+    const r = logged();
+    const { log } = join(
+      exported([r]),
+      practice([
+        press(r.t - 60, { on: 'target', target: farBox }),
+        press(r.t - 90, { target: farBox }),
+        press(r.t - 5),
+      ]),
+    );
+    expect(log.reviews.find((review) => review.verdict === 'right')?.candidate).toBe(0);
+  });
+
   it('marks every candidate wrong when the lit control was not among them', () => {
     const r = logged();
     const elsewhere = { x: 900, y: 100, w: 30, h: 30 };

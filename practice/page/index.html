@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>heyo practice</title>
     <link rel="stylesheet" href="practice.css" />
+    <!-- The page changes these two rules through the style sheet, never the
+         DOM. The first lights a control, the second shows the count. -->
+    <style id="cue">
+      .c[data-n='none'] {
+        background: var(--lit) !important;
+        border-color: var(--lit-edge) !important;
+        color: var(--lit-ink) !important;
+        box-shadow: inset 0 0 0 1px var(--lit-edge);
+      }
+      #progress::after {
+        content: '';
+      }
+    </style>
   </head>
   <body>
     <header class="bar">

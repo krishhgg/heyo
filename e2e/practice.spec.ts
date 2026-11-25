@@ -24,7 +24,10 @@ interface Aim {
 function aim(page: Page): Promise<Aim> {
   return page.evaluate(
     ([missPx, clearPx]) => {
-      const lit = document.querySelector('.lit')!;
+      // The page lights a control through a style rule, not a class.
+      const rule = (document.getElementById('cue') as HTMLStyleElement).sheet!
+        .cssRules[0] as CSSStyleRule;
+      const lit = document.querySelector(rule.selectorText)!;
       const r = lit.getBoundingClientRect();
       const others = [...document.querySelectorAll('.c')]
         .filter((c) => c !== lit)
@@ -66,9 +69,11 @@ test('a practice run comes out as a log marked from the lit control', async () =
   let misses = 0;
   const player = async (page: Page) => {
     await page.click('#start');
+    // The first control lights once the new scene has settled.
+    await page.waitForTimeout(500);
     for (let i = 0; i < TRIALS; i++) {
-      // Longer than the 300 ms in which a change to the page counts against a click.
-      await page.waitForTimeout(400);
+      // A hit changes no DOM, so a miss right after it is not refused for a page change.
+      await page.waitForTimeout(100);
       const { center, miss } = await aim(page);
       if (miss) {
         await page.mouse.move(miss.from.x, miss.from.y);

@@ -14,10 +14,21 @@ const PER_SCENE = 24;
 /** About how long one hit takes, for the estimate on the start screen. */
 const SECONDS_PER_HIT = 2;
 
+/**
+ * heyo refuses a click when the DOM changed in the 300 ms before it. A new
+ * scene is the page's only DOM change, so it waits this long before lighting
+ * a control.
+ */
+const SETTLE_MS = 400;
+
 const stage = document.getElementById('stage');
 const promptLine = document.getElementById('prompt');
-const progress = document.getElementById('progress');
 const finishButton = document.getElementById('finish');
+
+// The lit control and the count are set through the style sheet. That leaves
+// the DOM as it was, so a hit is not a page change to heyo.
+const [cueRule, countRule] = document.getElementById('cue').sheet.cssRules;
+const UNLIT = '.c[data-n="none"]';
 
 /** Added by the practice run. A page opened on its own has nowhere to save. */
 const save = typeof window.heyoPracticeSave === 'function' ? window.heyoPracticeSave : null;
@@ -319,30 +330,39 @@ function rectOf(element) {
   return { x: r.left, y: r.top, w: r.width, h: r.height };
 }
 
+function count(text) {
+  countRule.style.content = JSON.stringify(text);
+}
+
+/** Puts up a scene with nothing lit, and lights a control once the change has settled. */
 function show(index) {
   scene = index;
   lit = null;
-  stage.replaceChildren(SCENES[index].build());
+  cueRule.selectorText = UNLIT;
+  const root = SCENES[index].build();
+  root.querySelectorAll('.c').forEach((control, n) => (control.dataset.n = String(n)));
+  stage.replaceChildren(root);
+  setTimeout(light, SETTLE_MS);
 }
 
 /** Lights a control at random, never the one just clicked. */
 function light() {
+  if (!running) return;
   const last = lit;
   const controls = [...stage.querySelectorAll('.c')].filter((control) => control !== last);
   lit = controls[Math.floor(Math.random() * controls.length)];
-  lit.classList.add('lit');
+  cueRule.selectorText = `.c[data-n="${lit.dataset.n}"]`;
 }
 
 function next() {
   log.hits++;
-  lit.classList.remove('lit');
   if (log.hits >= TRIALS) {
     finish();
     return;
   }
+  count(`${log.hits} of ${TRIALS}`);
   if (log.hits % PER_SCENE === 0) show((scene + 1) % SCENES.length);
-  light();
-  progress.textContent = `${log.hits} of ${TRIALS}`;
+  else light();
   save?.(log);
 }
 
@@ -365,10 +385,9 @@ document.getElementById('start').addEventListener('click', () => {
   document.getElementById('intro').hidden = true;
   stage.hidden = false;
   finishButton.hidden = false;
-  show(0);
-  light();
-  progress.textContent = `0 of ${TRIALS}`;
   running = true;
+  count(`0 of ${TRIALS}`);
+  show(0);
 });
 
 finishButton.addEventListener('click', finish);
@@ -377,7 +396,7 @@ finishButton.addEventListener('click', finish);
 // page's own on a control is one of the signs heyo knows a control by, and
 // the controls here are known by being buttons, links and inputs.
 document.addEventListener('pointerdown', (event) => {
-  if (!running || !event.isTrusted || event.button !== 0) return;
+  if (!running || !lit || !event.isTrusted || event.button !== 0) return;
   if (!(event.target instanceof Element) || !stage.contains(event.target)) return;
   const control = event.target.closest('.c');
   log.presses.push({

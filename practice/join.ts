@@ -60,13 +60,27 @@ export interface Tally {
   labeledRight: number;
 }
 
-function sameClick(record: ClickRecord, press: PracticePress): boolean {
+/**
+ * The press a record was logged for. heyo logs only presses on empty space.
+ * Of those close enough in time and place, the nearest in time wins, so the
+ * second press of a quick double-click is not taken for the first.
+ */
+function pressOf(
+  record: ClickRecord,
+  presses: PracticePress[],
+  used: Set<PracticePress>,
+): PracticePress | null {
   const { point } = record.features;
-  return (
-    Math.abs(record.t - press.t) <= SAME_TIME_MS &&
-    Math.abs(point.x - press.x) <= SAME_POINT_PX &&
-    Math.abs(point.y - press.y) <= SAME_POINT_PX
-  );
+  let best: PracticePress | null = null;
+  for (const press of presses) {
+    if (used.has(press) || press.on !== 'empty') continue;
+    const dt = Math.abs(record.t - press.t);
+    if (dt > SAME_TIME_MS) continue;
+    if (Math.abs(point.x - press.x) > SAME_POINT_PX) continue;
+    if (Math.abs(point.y - press.y) > SAME_POINT_PX) continue;
+    if (!best || dt < Math.abs(record.t - best.t)) best = press;
+  }
+  return best;
 }
 
 /**
@@ -95,7 +109,7 @@ export function join(exported: LogExport, practice: PracticeLog): { log: LogExpo
   const records: ClickRecord[] = [];
   const reviews: Review[] = [];
   for (const record of exported.records) {
-    const press = practice.presses.find((p) => !used.has(p) && sameClick(record, p));
+    const press = pressOf(record, practice.presses, used);
     if (!press) continue;
     used.add(press);
     records.push(record);

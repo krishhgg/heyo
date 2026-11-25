@@ -66,10 +66,12 @@ export async function run(trials: number, tools: Tools, player?: Player): Promis
     let copy: LogExport | null = null;
     let copying = Promise.resolve();
     const keep = () => {
-      copying = copying.then(
-        () => exportLog(worker).then((log) => void (copy = log)),
-        // The browser closed under the copy. The last one stands.
-        () => undefined,
+      copying = copying.then(() =>
+        exportLog(worker).then(
+          (log) => void (copy = log),
+          // The browser closed under the copy. The last one stands.
+          () => undefined,
+        ),
       );
     };
     let end!: () => void;
